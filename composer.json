@@ -1,0 +1,48 @@
+{
+    "name": "sfs-infotech/craft-mfa-enforcer",
+    "description": "Provide custom MFA for craft entry, category, assets and so on..",
+    "type": "craft-plugin",
+    "license": "mit",
+    "support": {
+        "email": "hello@softwareforsolution.com",
+        "issues": "https://github.com/taher-k5/mfa-enforcer/issues?state=open",
+        "source": "https://github.com/taher-k5/mfa-enforcer",
+        "docs": "https://github.com/taher-k5/mfa-enforcer",
+        "rss": "https://github.com/taher-k5/mfa-enforcer/releases.atom"
+    },
+    "require": {
+        "php": ">=8.0.2",
+        "craftcms/cms": "^5.0.0"
+    },
+    "require-dev": {
+        "craftcms/ecs": "dev-main",
+        "craftcms/phpstan": "dev-main"
+    },
+    "autoload": {
+        "psr-4": {
+            "sfsinfotech\\craftmfaenforcer\\": "src/"
+        }
+    },
+    "extra": {
+        "handle": "mfa-enforcer",
+        "name": "MFA enforcer",
+        "developer": "SFS Infotech",
+        "documentationUrl": "https://github.com/taher-k5/mfa-enforcer"
+    },
+    "scripts": {
+        "check-cs": "ecs check --ansi",
+        "fix-cs": "ecs check --ansi --fix",
+        "phpstan": "phpstan --memory-limit=1G"
+    },
+    "config": {
+        "sort-packages": true,
+        "platform": {
+            "php": "8.0.2"
+        },
+        "allow-plugins": {
+            "yiisoft/yii2-composer": true,
+            "craftcms/plugin-installer": true
+        }
+    }
+}
+
