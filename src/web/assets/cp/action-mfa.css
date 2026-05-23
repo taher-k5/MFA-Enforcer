@@ -1,0 +1,22 @@
+.action-mfa-modal .inputcontainer {
+    margin-top: 8px;
+}
+.action-mfa-modal .flex {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.action-mfa-modal .flex-grow {
+    flex: 1 1 auto;
+}
+.action-mfa-modal .action-mfa-btn-cell {
+    flex: 0 0 auto;
+}
+.action-mfa-modal input.text {
+    letter-spacing: 4px;
+    text-align: center;
+    font-size: 16px;
+}
+.action-mfa-modal p.error:empty {
+    display: none;
+}

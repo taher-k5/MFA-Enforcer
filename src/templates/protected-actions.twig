@@ -1,0 +1,118 @@
+{% extends "_layouts/cp" %}
+
+{% set title = "Protected Actions"|t %}
+{% set selectedSubnavItem = "protected-actions" %}
+{% set fullPageForm = true %}
+
+{% import "_includes/forms" as forms %}
+
+{% set protected = settings.protectedActions %}
+
+{% macro checkbox(key, protected) %}
+    <input type="checkbox"
+           name="protectedActions[{{ key }}]"
+           value="1"
+           {% if protected[key] is defined and protected[key] %}checked{% endif %}>
+{% endmacro %}
+
+{% from _self import checkbox %}
+
+{% block content %}
+    <input type="hidden" name="action" value="action-mfa/settings/save-protected-actions">
+    {{ redirectInput('action-mfa/protected-actions') }}
+    {{ csrfInput() }}
+
+    <p>Tick which operations require MFA confirmation per resource. Anything left unticked proceeds without a prompt for users in the enforced groups.</p>
+
+    {# ---- Entries (per section) ---- #}
+    <h2>{{ "Entries"|t }}</h2>
+    {% if sections|length %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>{{ "Section"|t }}</th>
+                    <th class="thin">{{ "Save"|t }}</th>
+                    <th class="thin">{{ "Delete"|t }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for section in sections %}
+                    <tr>
+                        <td><strong>{{ section.name }}</strong> <span class="light">({{ section.handle }})</span></td>
+                        <td>{{ checkbox("entry.#{section.id}.save", protected) }}</td>
+                        <td>{{ checkbox("entry.#{section.id}.delete", protected) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="light">{{ "No sections defined."|t }}</p>
+    {% endif %}
+
+    {# ---- Global Sets ---- #}
+    <h2 style="margin-top: 32px;">{{ "Globals"|t }}</h2>
+    {% if globalSets|length %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>{{ "Global set"|t }}</th>
+                    <th class="thin">{{ "Save"|t }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for set in globalSets %}
+                    <tr>
+                        <td><strong>{{ set.name }}</strong> <span class="light">({{ set.handle }})</span></td>
+                        <td>{{ checkbox("globalSet.#{set.id}.save", protected) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="light">{{ "No global sets defined."|t }}</p>
+    {% endif %}
+
+
+    {# ---- Categories (per group) ---- #}
+    <h2 style="margin-top: 32px;">{{ "Categories"|t }}</h2>
+    {% if categoryGroups|length %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>{{ "Category group"|t }}</th>
+                    <th class="thin">{{ "Save"|t }}</th>
+                    <th class="thin">{{ "Delete"|t }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for group in categoryGroups %}
+                    <tr>
+                        <td><strong>{{ group.name }}</strong> <span class="light">({{ group.handle }})</span></td>
+                        <td>{{ checkbox("category.#{group.id}.save", protected) }}</td>
+                        <td>{{ checkbox("category.#{group.id}.delete", protected) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="light">{{ "No category groups defined."|t }}</p>
+    {% endif %}
+
+    {# ---- Utilities ---- #}
+    <h2 style="margin-top: 32px;">{{ "Utilities"|t }}</h2>
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th>{{ "Project Config"|t }}</th>
+                <th class="thin">{{ "Protected"|t }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>{{ "Reapply Everything"|t }}</strong></td>
+                <td>{{ checkbox("utilities.projectConfig.reapply", protected) }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+{% endblock %}
