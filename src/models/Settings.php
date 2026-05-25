@@ -1,6 +1,6 @@
 <?php
 
-namespace modules\actionmfa\models;
+namespace sfsinfotech\craftmfaenforcer\models;
 
 use craft\base\Model;
 

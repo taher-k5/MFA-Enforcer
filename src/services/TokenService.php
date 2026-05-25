@@ -1,14 +1,14 @@
 <?php
 
-namespace modules\actionmfa\services;
+namespace sfsinfotech\craftmfaenforcer\services;
 
 use Craft;
 use craft\helpers\DateTimeHelper;
 use craft\helpers\Db;
 use craft\helpers\StringHelper;
 use DateTime;
-use modules\actionmfa\Plugin;
-use modules\actionmfa\records\ActionMfaTokenRecord;
+use sfsinfotech\craftmfaenforcer\Plugin;
+use sfsinfotech\craftmfaenforcer\records\MfaEnforcerTokenRecord;
 use yii\base\Component;
 
 class TokenService extends Component
@@ -19,7 +19,7 @@ class TokenService extends Component
         $ttl = 30;
         $expiresAt = (new DateTime())->modify("+{$ttl} seconds");
 
-        $record = new ActionMfaTokenRecord();
+        $record = new MfaEnforcerTokenRecord();
         $record->userId = $userId;
         $record->token = $token;
         $record->actionKey = $actionKey;
@@ -37,7 +37,7 @@ class TokenService extends Component
      */
     public function consume(string $token, int $userId): bool
     {
-        $record = ActionMfaTokenRecord::findOne([
+        $record = MfaEnforcerTokenRecord::findOne([
             'token' => $token,
             'userId' => $userId,
         ]);
@@ -60,7 +60,7 @@ class TokenService extends Component
     public function purgeExpired(): void
     {
         Craft::$app->getDb()->createCommand()
-            ->delete('{{%actionmfa_tokens}}', ['<', 'expiresAt', Db::prepareDateForDb(new DateTime('-1 day'))])
+            ->delete('{{%mfaenforcer_tokens}}', ['<', 'expiresAt', Db::prepareDateForDb(new DateTime('-1 day'))])
             ->execute();
     }
 }

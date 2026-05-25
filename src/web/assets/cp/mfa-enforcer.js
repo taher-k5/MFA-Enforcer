@@ -1,20 +1,20 @@
 (function () {
     'use strict';
 
-    const config = window.ActionMfaConfig;
+    const config = window.MfaEnforcerConfig;
     if (!config || !config.applies || !config.protectedActions || Object.keys(config.protectedActions).length === 0) {
         return;
     }
 
     // Always read a fresh copy of the config so that Craft CP PJAX navigation
-    // (which replaces window.ActionMfaConfig with a new object) is reflected
+    // (which replaces window.MfaEnforcerConfig with a new object) is reflected
     // in every interception check. Falls back to the snapshot captured above
     // in case the global is somehow cleared.
     function getConfig() {
-        return window.ActionMfaConfig || config || {};
+        return window.MfaEnforcerConfig || config || {};
     }
 
-    const TOKEN_HEADER = 'X-Action-MFA-Token';
+    const TOKEN_HEADER = 'X-Mfa-Enforcer-Token';
     const MFA_TOKEN_TTL_MS = 5000;
     let recentMfaToken = null;
     let recentMfaExpires = 0;
@@ -257,7 +257,7 @@
             //   1. config.currentResourceContext — set when the page is a section/group
             //      index URL (e.g. /entries/articles). This is ONLY reliable after a
             //      full page load at that URL. After Craft CP PJAX navigation the global
-            //      window.ActionMfaConfig is replaced, so we always call getConfig() here.
+            //      window.MfaEnforcerConfig is replaced, so we always call getConfig() here.
             //   2. sourceKeyMap — PHP pre-builds a UUID→{type,id} table for every
             //      protected resource. The request body always carries a 'source' field
             //      (e.g. 'section:UUID' or 'group:UUID'), so this path works even when
@@ -314,16 +314,16 @@
     function ensureModal() {
         if (modalState) return modalState;
         if (typeof window.Garnish === 'undefined' || typeof window.jQuery === 'undefined') {
-            console.warn('[action-mfa] Garnish/jQuery not present — interception disabled.');
+            console.warn('[mfa-enforcer] Garnish/jQuery not present — interception disabled.');
             return null;
         }
         const $ = window.jQuery;
-        const $form = $('<form class="modal secure fitted action-mfa-modal" style="min-height:150px;" />');
+        const $form = $('<form class="modal secure fitted mfa-enforcer-modal" style="min-height:150px;" />');
         const $body = $('<div class="body" style="padding-bottom:24px; min-height:130px; min-width:520px;">' + '<p>Enter your authentication code to continue.</p>' + '</div>').appendTo($form);
         const $inputContainer = $('<div class="inputcontainer" />').appendTo($body);
         const $flex = $('<div class="flex" />').appendTo($inputContainer);
         const $flexGrow = $('<div class="flex-grow" />').appendTo($flex);
-        const $btnCell = $('<div class="action-mfa-btn-cell" />').appendTo($flex);
+        const $btnCell = $('<div class="mfa-enforcer-btn-cell" />').appendTo($flex);
         const $input = $('<input ' + 'type="text" ' + 'class="text fullwidth" ' + 'inputmode="numeric" ' + 'autocomplete="one-time-code" ' + 'pattern="[0-9 ]*" ' + 'maxlength="10" ' + 'placeholder="123 456"' + ' />').appendTo($flexGrow);
         const $submitBtn = (window.Craft && window.Craft.ui) ? window.Craft.ui.createSubmitButton({class: 'disabled', label: 'Submit', spinner: true,}) : $('<button type="submit" class="btn submit">Submit</button>'); $submitBtn.appendTo($btnCell);
         const $error = $('<p class="error" style="margin-top:10px; min-height:22px;" />').appendTo($body);
@@ -429,11 +429,11 @@
     }
 
     function injectTokenInput(form, token) {
-        let input = form.querySelector('input[name="actionMfaToken"]');
+        let input = form.querySelector('input[name="mfaEnforcerToken"]');
         if (!input) {
             input = document.createElement('input');
             input.type = 'hidden';
-            input.name = 'actionMfaToken';
+            input.name = 'mfaEnforcerToken';
             form.appendChild(input);
         }
         input.value = token;
@@ -484,7 +484,7 @@
                 if (err) { done(err); return; }
                 storeRecentMfaToken(token);
                 injectTokenInput(form, token);
-                form.dataset.actionMfaConfirmed = '1';
+                form.dataset.mfaEnforcerConfirmed = '1';
                 done(null);
                 originalSubmit.apply(form, submitArgs || []);
             });
@@ -495,7 +495,7 @@
     const origFormSubmit = HTMLFormElement.prototype.submit;
         HTMLFormElement.prototype.submit = function () {
 
-            if (this.dataset.actionMfaConfirmed === '1') {
+            if (this.dataset.mfaEnforcerConfirmed === '1') {
                 return origFormSubmit.apply(this, arguments);
             }
 
@@ -503,7 +503,7 @@
 
             if (cachedToken) {
                 injectTokenInput(this, cachedToken);
-                this.dataset.actionMfaConfirmed = '1';
+                this.dataset.mfaEnforcerConfirmed = '1';
                 return origFormSubmit.apply(this, arguments);
             }
             return challengeForm(this, origFormSubmit, arguments);
@@ -512,7 +512,7 @@
         const origRequestSubmit = HTMLFormElement.prototype.requestSubmit;
         HTMLFormElement.prototype.requestSubmit = function () {
 
-            if (this.dataset.actionMfaConfirmed === '1') {
+            if (this.dataset.mfaEnforcerConfirmed === '1') {
                 return origRequestSubmit.apply(this, arguments);
             }
 
@@ -520,7 +520,7 @@
 
             if (cachedToken) {
                 injectTokenInput(this, cachedToken);
-                this.dataset.actionMfaConfirmed = '1';
+                this.dataset.mfaEnforcerConfirmed = '1';
                 return origRequestSubmit.apply(this, arguments);
             }
 
@@ -532,7 +532,7 @@
     document.addEventListener('submit', function (e) {
         const form = e.target;
         if (!form || form.tagName !== 'FORM') return;
-        if (form.dataset.actionMfaConfirmed === '1') {
+        if (form.dataset.mfaEnforcerConfirmed === '1') {
             return;
         }
 
@@ -570,7 +570,7 @@
                 if (err) { done(err); return; }
                 storeRecentMfaToken(token);
                 injectTokenInput(form, token);
-                form.dataset.actionMfaConfirmed = '1';
+                form.dataset.mfaEnforcerConfirmed = '1';
                 done(null);
 
                 // IMPORTANT:
@@ -613,33 +613,33 @@
         const isForce = params && (params.force === 1 || params.force === '1' || params.force === true);
         if (!isForce) return;
 
-        if (btn.dataset.actionMfaConfirmed === '1') return;
+        if (btn.dataset.mfaEnforcerConfirmed === '1') return;
 
         const cachedToken = getRecentMfaToken();
         if (cachedToken) {
-            btn.dataset.actionMfaConfirmed = '1';
+            btn.dataset.mfaEnforcerConfirmed = '1';
             return;
         }
 
         // Prevent duplicate modals for the same button
-        if (btn.__actionMfaPending) return;
-        btn.__actionMfaPending = true;
+        if (btn.__mfaEnforcerPending) return;
+        btn.__mfaEnforcerPending = true;
 
         e.preventDefault();
         e.stopPropagation();
 
         showModal(function (code, done) {
             verifyCode(code, function (err, token) {
-                btn.__actionMfaPending = false;
+                btn.__mfaEnforcerPending = false;
                 if (err) { done(err); return; }
                 storeRecentMfaToken(token);
                 done(null);
-                btn.dataset.actionMfaConfirmed = '1';
+                btn.dataset.mfaEnforcerConfirmed = '1';
                 // Re-dispatch the original click after a short delay to avoid re-entry issues
                 setTimeout(function () { btn.click(); }, 10);
             });
         }, function () {
-            btn.__actionMfaPending = false;
+            btn.__mfaEnforcerPending = false;
         });
     }, true);
 
@@ -649,20 +649,20 @@
     const origSetHeader = XMLHttpRequest.prototype.setRequestHeader;
 
     XMLHttpRequest.prototype.open = function (method, url) {
-        this.__actionMfaMethod = (method || '').toUpperCase();
-        this.__actionMfaUrl = url;
-        this.__actionMfaHeaders = [];
+        this.__mfaEnforcerMethod = (method || '').toUpperCase();
+        this.__mfaEnforcerUrl = url;
+        this.__mfaEnforcerHeaders = [];
         return origOpen.apply(this, arguments);
     };
     XMLHttpRequest.prototype.setRequestHeader = function (name, value) {
-        if (this.__actionMfaHeaders) this.__actionMfaHeaders.push([name, value]);
+        if (this.__mfaEnforcerHeaders) this.__mfaEnforcerHeaders.push([name, value]);
         return origSetHeader.apply(this, arguments);
     };
     XMLHttpRequest.prototype.send = function () {
         const xhr = this;
-        const method = xhr.__actionMfaMethod;
-        const url = xhr.__actionMfaUrl || '';
-        if ((method !== 'POST' && method !== 'DELETE') || xhr.__actionMfaPassed) return origSend.apply(xhr, arguments);
+        const method = xhr.__mfaEnforcerMethod;
+        const url = xhr.__mfaEnforcerUrl || '';
+        if ((method !== 'POST' && method !== 'DELETE') || xhr.__mfaEnforcerPassed) return origSend.apply(xhr, arguments);
         if (!isWriteUrl(url)) {
             return origSend.apply(xhr, arguments);
         }
@@ -679,8 +679,8 @@
 
         if (cachedToken) {
 
-            xhr.__actionMfaPassed = true;
-            const headers = xhr.__actionMfaHeaders ? xhr.__actionMfaHeaders.slice() : [];
+            xhr.__mfaEnforcerPassed = true;
+            const headers = xhr.__mfaEnforcerHeaders ? xhr.__mfaEnforcerHeaders.slice() : [];
             origOpen.call(xhr, method, url, true);
 
             for (const [n, v] of headers) {
@@ -695,8 +695,8 @@
                 if (err) { done(err); return; }
                 storeRecentMfaToken(token);
                 done(null);
-                const headers = xhr.__actionMfaHeaders ? xhr.__actionMfaHeaders.slice() : [];
-                xhr.__actionMfaPassed = true;
+                const headers = xhr.__mfaEnforcerHeaders ? xhr.__mfaEnforcerHeaders.slice() : [];
+                xhr.__mfaEnforcerPassed = true;
                 origOpen.call(xhr, method, url, true);
                 for (const [n, v] of headers) origSetHeader.call(xhr, n, v);
                 origSetHeader.call(xhr, TOKEN_HEADER, token);

@@ -1,6 +1,6 @@
 <?php
 
-namespace modules\actionmfa;
+namespace sfsinfotech\craftmfaenforcer;
 
 use Craft;
 use craft\base\Plugin as BasePlugin;
@@ -10,12 +10,12 @@ use craft\events\RegisterTemplateRootsEvent;
 use craft\events\RegisterUrlRulesEvent;
 use craft\web\UrlManager;
 use craft\web\View;
-use modules\actionmfa\models\Settings;
-use modules\actionmfa\records\SettingsRecord;
-use modules\actionmfa\services\EventGuard;
-use modules\actionmfa\services\TokenService;
-use modules\actionmfa\services\TotpService;
-use modules\actionmfa\web\assets\cp\CpAsset;
+use sfsinfotech\craftmfaenforcer\models\Settings;
+use sfsinfotech\craftmfaenforcer\records\SettingsRecord;
+use sfsinfotech\craftmfaenforcer\services\EventGuard;
+use sfsinfotech\craftmfaenforcer\services\TokenService;
+use sfsinfotech\craftmfaenforcer\services\TotpService;
+use sfsinfotech\craftmfaenforcer\web\assets\cp\CpAsset;
 use yii\base\Event;
 
 /**
@@ -41,11 +41,11 @@ class Plugin extends BasePlugin
         parent::init();
         self::$plugin = $this;
 
-        Craft::setAlias('@modules/actionmfa', __DIR__);
+        Craft::setAlias('@sfsinfotech/craftmfaenforcer', __DIR__);
 
         $this->controllerNamespace = Craft::$app->getRequest()->getIsConsoleRequest()
-            ? 'modules\\actionmfa\\console\\controllers'
-            : 'modules\\actionmfa\\controllers';
+            ? 'sfsinfotech\\craftmfaenforcer\\console\\controllers'
+            : 'sfsinfotech\\craftmfaenforcer\\controllers';
 
         $this->setComponents([
             'guard' => EventGuard::class,
@@ -57,7 +57,7 @@ class Plugin extends BasePlugin
             View::class,
             View::EVENT_REGISTER_CP_TEMPLATE_ROOTS,
             function (RegisterTemplateRootsEvent $event) {
-                $event->roots['action-mfa'] = __DIR__ . '/templates';
+                $event->roots['mfa-enforcer'] = __DIR__ . '/templates';
             }
         );
 
@@ -65,11 +65,11 @@ class Plugin extends BasePlugin
             UrlManager::class,
             UrlManager::EVENT_REGISTER_CP_URL_RULES,
             function (RegisterUrlRulesEvent $event) {
-                $event->rules['action-mfa'] = 'action-mfa/settings/protected-actions';
-                $event->rules['action-mfa/general'] = 'action-mfa/settings/general';
-                $event->rules['action-mfa/protected-actions'] = 'action-mfa/settings/protected-actions';
-                $event->rules['POST action-mfa/general/save'] = 'action-mfa/settings/save-general';
-                $event->rules['POST action-mfa/protected-actions/save'] = 'action-mfa/settings/save-protected-actions';
+                $event->rules['mfa-enforcer'] = 'mfa-enforcer/settings/protected-actions';
+                $event->rules['mfa-enforcer/general'] = 'mfa-enforcer/settings/general';
+                $event->rules['mfa-enforcer/protected-actions'] = 'mfa-enforcer/settings/protected-actions';
+                $event->rules['POST mfa-enforcer/general/save'] = 'mfa-enforcer/settings/save-general';
+                $event->rules['POST mfa-enforcer/protected-actions/save'] = 'mfa-enforcer/settings/save-protected-actions';
             }
         );
 
@@ -108,7 +108,7 @@ class Plugin extends BasePlugin
             }
         } catch (\Throwable $e) {
             // Table may not exist yet during the first migration run.
-            Craft::warning('ActionMFA: could not load settings from DB: ' . $e->getMessage(), __METHOD__);
+            Craft::warning('MfaEnforcer: could not load settings from DB: ' . $e->getMessage(), __METHOD__);
         }
 
         $this->_dbSettings = $settings;
@@ -149,7 +149,7 @@ class Plugin extends BasePlugin
             $this->_dbSettings = $settings;
             return true;
         } catch (\Throwable $e) {
-            Craft::error('ActionMFA: could not save settings: ' . $e->getMessage(), __METHOD__);
+            Craft::error('MfaEnforcer: could not save settings: ' . $e->getMessage(), __METHOD__);
             return false;
         }
     }
@@ -157,11 +157,11 @@ class Plugin extends BasePlugin
     public function getCpNavItem(): ?array
     {
         $item = parent::getCpNavItem();
-        $item['label'] = 'Action MFA';
-        $item['url'] = 'action-mfa';
+        $item['label'] = 'MFA enforcer';
+        $item['url'] = 'mfa-enforcer';
         $item['subnav'] = [
-            'protected-actions' => ['label' => 'Protected Actions', 'url' => 'action-mfa/protected-actions'],
-            'general' => ['label' => 'Settings', 'url' => 'action-mfa/general'],
+            'protected-actions' => ['label' => 'Protected Actions', 'url' => 'mfa-enforcer/protected-actions'],
+            'general' => ['label' => 'Settings', 'url' => 'mfa-enforcer/general'],
         ];
         return $item;
     }
@@ -290,7 +290,7 @@ class Plugin extends BasePlugin
                 }
 
                 $config = [
-                    'verifyUrl' => '/' . trim(Craft::$app->getConfig()->getGeneral()->cpTrigger, '/') . '/actions/action-mfa/challenge/verify',
+                    'verifyUrl' => '/' . trim(Craft::$app->getConfig()->getGeneral()->cpTrigger, '/') . '/actions/mfa-enforcer/challenge/verify',
                     'csrfTokenName' => Craft::$app->getRequest()->csrfParam,
                     'csrfToken' => Craft::$app->getRequest()->getCsrfToken(),
                     'applies' => $applies,
@@ -299,7 +299,7 @@ class Plugin extends BasePlugin
                     'currentResourceContext' => $currentResourceContext,
                     'sourceKeyMap' => $sourceKeyMap,
                 ];
-                $view->registerJs('window.ActionMfaConfig = ' . json_encode($config) . ';', $view::POS_HEAD);
+                $view->registerJs('window.MfaEnforcerConfig = ' . json_encode($config) . ';', $view::POS_HEAD);
             }
         );
     }

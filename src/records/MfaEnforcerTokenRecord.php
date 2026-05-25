@@ -1,6 +1,6 @@
 <?php
 
-namespace modules\actionmfa\records;
+namespace sfsinfotech\craftmfaenforcer\records;
 
 use craft\db\ActiveRecord;
 
@@ -12,10 +12,10 @@ use craft\db\ActiveRecord;
  * @property string $expiresAt
  * @property string|null $usedAt
  */
-class ActionMfaTokenRecord extends ActiveRecord
+class MfaEnforcerTokenRecord extends ActiveRecord
 {
     public static function tableName(): string
     {
-        return '{{%actionmfa_tokens}}';
+        return '{{%mfaenforcer_tokens}}';
     }
 }

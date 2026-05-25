@@ -12,8 +12,8 @@
 {% endfor %}
 
 {% block content %}
-    <input type="hidden" name="action" value="action-mfa/settings/save-general">
-    {{ redirectInput('action-mfa/general') }}
+    <input type="hidden" name="action" value="mfa-enforcer/settings/save-general">
+    {{ redirectInput('mfa-enforcer/general') }}
     {{ csrfInput() }}
 
     {{ forms.checkboxSelectField({

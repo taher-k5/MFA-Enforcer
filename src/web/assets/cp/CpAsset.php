@@ -1,6 +1,6 @@
 <?php
 
-namespace modules\actionmfa\web\assets\cp;
+namespace sfsinfotech\craftmfaenforcer\web\assets\cp;
 
 use craft\web\AssetBundle;
 use craft\web\assets\cp\CpAsset as CraftCpAsset;
@@ -13,8 +13,8 @@ class CpAsset extends AssetBundle
     {
         $this->sourcePath = __DIR__;
         $this->depends = [CraftCpAsset::class];
-        $this->js = ['action-mfa.js'];
-        $this->css = ['action-mfa.css'];
+        $this->js = ['mfa-enforcer.js'];
+        $this->css = ['mfa-enforcer.css'];
         parent::init();
     }
 }

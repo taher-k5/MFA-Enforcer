@@ -1,10 +1,10 @@
 <?php
 
-namespace modules\actionmfa\controllers;
+namespace sfsinfotech\craftmfaenforcer\controllers;
 
 use Craft;
 use craft\web\Controller;
-use modules\actionmfa\Plugin;
+use sfsinfotech\craftmfaenforcer\Plugin;
 use yii\web\Response;
 
 class SettingsController extends Controller
@@ -17,7 +17,7 @@ class SettingsController extends Controller
 
     public function actionGeneral(): Response
     {
-        return $this->renderTemplate('action-mfa/general', [
+        return $this->renderTemplate('mfa-enforcer/general', [
             'settings' => Plugin::getInstance()->getSettings(),
         ]);
     }
@@ -47,7 +47,7 @@ class SettingsController extends Controller
     {
         $settings = Plugin::getInstance()->getSettings();
 
-        return $this->renderTemplate('action-mfa/protected-actions', [
+        return $this->renderTemplate('mfa-enforcer/protected-actions', [
             'settings' => $settings,
             'sections' => Craft::$app->getSections()->getAllSections(),
             'categoryGroups' => Craft::$app->getCategories()->getAllGroups(),

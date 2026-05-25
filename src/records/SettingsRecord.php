@@ -1,6 +1,6 @@
 <?php
 
-namespace modules\actionmfa\records;
+namespace sfsinfotech\craftmfaenforcer\records;
 
 use craft\db\ActiveRecord;
 
@@ -16,6 +16,6 @@ class SettingsRecord extends ActiveRecord
 {
     public static function tableName(): string
     {
-        return '{{%actionmfa_settings}}';
+        return '{{%mfaenforcer_settings}}';
     }
 }

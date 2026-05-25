@@ -1,6 +1,6 @@
 <?php
 
-namespace modules\actionmfa\services;
+namespace sfsinfotech\craftmfaenforcer\services;
 
 use Craft;
 use craft\base\Element;
@@ -10,7 +10,7 @@ use craft\elements\Entry;
 use craft\elements\GlobalSet;
 use craft\elements\User as UserElement;
 use craft\events\ModelEvent;
-use modules\actionmfa\Plugin;
+use sfsinfotech\craftmfaenforcer\Plugin;
 use yii\base\ActionEvent;
 use yii\base\Application;
 use yii\base\Component;
@@ -215,7 +215,7 @@ class EventGuard extends Component
         $event->isValid = false;
         $element = $event->sender;
         if ($element instanceof Element) {
-            $element->addError('actionMfa', $reason);
+            $element->addError('mfaEnforcer', $reason);
         }
     }
 
@@ -238,8 +238,8 @@ class EventGuard extends Component
         }
 
         $request = Craft::$app->getRequest();
-        $headerToken = $request->getHeaders()->get('X-Action-MFA-Token');
-        $bodyToken = $request->getBodyParam('actionMfaToken', '');
+        $headerToken = $request->getHeaders()->get('X-Mfa-Enforcer-Token');
+        $bodyToken = $request->getBodyParam('mfaEnforcerToken', '');
         $token = (string)($headerToken ?: $bodyToken);
         if ($token === '') {
             return 'MFA confirmation is required for this action.';

@@ -1,10 +1,10 @@
 <?php
 
-namespace modules\actionmfa\controllers;
+namespace sfsinfotech\craftmfaenforcer\controllers;
 
 use Craft;
 use craft\web\Controller;
-use modules\actionmfa\Plugin;
+use sfsinfotech\craftmfaenforcer\Plugin;
 use yii\web\BadRequestHttpException;
 use yii\web\ForbiddenHttpException;
 use yii\web\Response;
@@ -67,7 +67,7 @@ class ChallengeController extends Controller
 
     private function failureCacheKey(int $userId): string
     {
-        return "actionMfa.failures.{$userId}";
+        return "mfaEnforcer.failures.{$userId}";
     }
 
     private function isLockedOut(int $userId): bool

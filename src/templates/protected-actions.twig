@@ -18,8 +18,8 @@
 {% from _self import checkbox %}
 
 {% block content %}
-    <input type="hidden" name="action" value="action-mfa/settings/save-protected-actions">
-    {{ redirectInput('action-mfa/protected-actions') }}
+    <input type="hidden" name="action" value="mfa-enforcer/settings/save-protected-actions">
+    {{ redirectInput('mfa-enforcer/protected-actions') }}
     {{ csrfInput() }}
 
     <p>Tick which operations require MFA confirmation per resource. Anything left unticked proceeds without a prompt for users in the enforced groups.</p>

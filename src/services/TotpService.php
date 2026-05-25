@@ -1,6 +1,6 @@
 <?php
 
-namespace modules\actionmfa\services;
+namespace sfsinfotech\craftmfaenforcer\services;
 
 use Craft;
 use born05\twofactorauthentication\Plugin as TwoFactorAuth;

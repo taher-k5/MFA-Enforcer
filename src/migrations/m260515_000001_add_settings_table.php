@@ -1,22 +1,22 @@
 <?php
 
-namespace modules\actionmfa\migrations;
+namespace sfsinfotech\craftmfaenforcer\migrations;
 
 use craft\db\Migration;
 
 /**
- * Migration: move Action MFA settings from project config into the database.
+ * Migration: move MFA Enforcer settings from project config into the database.
  * Existing installations run this migration; fresh installs go through Install.php.
  */
 class m260515_000001_add_settings_table extends Migration
 {
     public function safeUp(): bool
     {
-        if ($this->db->tableExists('{{%actionmfa_settings}}')) {
+        if ($this->db->tableExists('{{%mfaenforcer_settings}}')) {
             return true;
         }
 
-        $this->createTable('{{%actionmfa_settings}}', [
+        $this->createTable('{{%mfaenforcer_settings}}', [
             'id'                    => $this->primaryKey(),
             'enforcedGroupIds'      => $this->text()->notNull(),
             'exemptUserIds'         => $this->text()->notNull(),
@@ -29,7 +29,7 @@ class m260515_000001_add_settings_table extends Migration
         ]);
 
         // Seed one empty-defaults row so a first load always has a record.
-        $this->insert('{{%actionmfa_settings}}', [
+        $this->insert('{{%mfaenforcer_settings}}', [
             'enforcedGroupIds'      => '[]',
             'exemptUserIds'         => '[]',
             'failureLimit'          => 5,
@@ -45,7 +45,7 @@ class m260515_000001_add_settings_table extends Migration
 
     public function safeDown(): bool
     {
-        $this->dropTableIfExists('{{%actionmfa_settings}}');
+        $this->dropTableIfExists('{{%mfaenforcer_settings}}');
         return true;
     }
 }
