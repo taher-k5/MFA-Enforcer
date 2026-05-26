@@ -12,6 +12,30 @@ class Install extends Migration
     {
         $this->driver = \Craft::$app->getConfig()->getDb()->driver;
 
+        if (!$this->db->tableExists('{{%mfaenforcer_user_secrets}}')) {
+            $this->createTable('{{%mfaenforcer_user_secrets}}', [
+                'id'          => $this->primaryKey(),
+                'userId'      => $this->integer()->notNull(),
+                'secret'      => $this->string(255)->notNull(),
+                'enabled'     => $this->boolean()->notNull()->defaultValue(false),
+                'dateCreated' => $this->dateTime()->notNull(),
+                'dateUpdated' => $this->dateTime()->notNull(),
+                'uid'         => $this->uid(),
+            ]);
+
+            $this->createIndex(null, '{{%mfaenforcer_user_secrets}}', ['userId'], true);
+
+            $this->addForeignKey(
+                null,
+                '{{%mfaenforcer_user_secrets}}',
+                ['userId'],
+                '{{%users}}',
+                ['id'],
+                'CASCADE',
+                null
+            );
+        }
+
         if (!$this->db->tableExists('{{%mfaenforcer_tokens}}')) {
             $this->createTable('{{%mfaenforcer_tokens}}', [
                 'id' => $this->primaryKey(),
@@ -71,6 +95,7 @@ class Install extends Migration
     {
         $this->dropTableIfExists('{{%mfaenforcer_settings}}');
         $this->dropTableIfExists('{{%mfaenforcer_tokens}}');
+        $this->dropTableIfExists('{{%mfaenforcer_user_secrets}}');
         return true;
     }
 }

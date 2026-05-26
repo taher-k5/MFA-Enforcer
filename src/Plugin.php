@@ -70,6 +70,11 @@ class Plugin extends BasePlugin
                 $event->rules['mfa-enforcer/protected-actions'] = 'mfa-enforcer/settings/protected-actions';
                 $event->rules['POST mfa-enforcer/general/save'] = 'mfa-enforcer/settings/save-general';
                 $event->rules['POST mfa-enforcer/protected-actions/save'] = 'mfa-enforcer/settings/save-protected-actions';
+                $event->rules['mfa-enforcer/setup'] = 'mfa-enforcer/setup/index';
+                $event->rules['POST mfa-enforcer/setup/enable'] = 'mfa-enforcer/setup/enable';
+                $event->rules['POST mfa-enforcer/setup/disable'] = 'mfa-enforcer/setup/disable';
+                $event->rules['POST mfa-enforcer/setup/refresh-secret'] = 'mfa-enforcer/setup/refresh-secret';
+                $event->rules['POST mfa-enforcer/setup/admin-reset'] = 'mfa-enforcer/setup/admin-reset';
             }
         );
 
@@ -161,6 +166,7 @@ class Plugin extends BasePlugin
         $item['url'] = 'mfa-enforcer';
         $item['subnav'] = [
             'protected-actions' => ['label' => 'Protected Actions', 'url' => 'mfa-enforcer/protected-actions'],
+            'setup' => ['label' => 'My MFA', 'url' => 'mfa-enforcer/setup'],
             'general' => ['label' => 'Settings', 'url' => 'mfa-enforcer/general'],
         ];
         return $item;

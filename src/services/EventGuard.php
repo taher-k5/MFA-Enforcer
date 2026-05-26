@@ -10,6 +10,7 @@ use craft\elements\Entry;
 use craft\elements\GlobalSet;
 use craft\elements\User as UserElement;
 use craft\events\ModelEvent;
+use sfsinfotech\craftmfaenforcer\controllers\ChallengeController;
 use sfsinfotech\craftmfaenforcer\Plugin;
 use yii\base\ActionEvent;
 use yii\base\Application;
@@ -234,7 +235,15 @@ class EventGuard extends Component
         $plugin = Plugin::getInstance();
 
         if (!$plugin->totp->isEnrolled($user)) {
-            return 'This action requires two-factor authentication, but your account is not enrolled. Please enrol via your account settings before retrying.';
+            return 'This action requires two-factor authentication, but your account is not enrolled. Please set up MFA via MFA Enforcer → My MFA before retrying.';
+        }
+
+        // ---------------------------------------------------------------
+        // 10-minute session window: if the user verified their TOTP code
+        // recently, allow the action without requiring a one-time token.
+        // ---------------------------------------------------------------
+        if ($this->isSessionWindowActive((int)$user->id)) {
+            return null;
         }
 
         $request = Craft::$app->getRequest();
@@ -259,5 +268,22 @@ class EventGuard extends Component
 
         self::$verifiedTokenThisRequest = $token;
         return null;
+    }
+
+    /**
+     * Returns true when the user verified their TOTP code within the last
+     * SESSION_WINDOW_SECONDS seconds (default: 10 minutes).
+     * The session key is set by ChallengeController::actionVerify() and by
+     * SetupController::actionEnable() immediately after the first verification.
+     */
+    private function isSessionWindowActive(int $userId): bool
+    {
+        try {
+            $key   = ChallengeController::SESSION_WINDOW_KEY_PREFIX . $userId;
+            $until = Craft::$app->getSession()->get($key);
+            return is_int($until) && $until > time();
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 }

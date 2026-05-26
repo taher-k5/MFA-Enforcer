@@ -12,9 +12,20 @@ class CpAsset extends AssetBundle
     public function init(): void
     {
         $this->sourcePath = __DIR__;
-        $this->depends = [CraftCpAsset::class];
-        $this->js = ['mfa-enforcer.js'];
-        $this->css = ['mfa-enforcer.css'];
+
+        $this->depends = [
+            CraftCpAsset::class,
+        ];
+
+        $this->js = [
+            'qrcode.min.js',
+            'mfa-enforcer.js',
+        ];
+
+        $this->css = [
+            'mfa-enforcer.css',
+        ];
+
         parent::init();
     }
 }

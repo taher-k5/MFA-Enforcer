@@ -19,9 +19,31 @@
     let recentMfaToken = null;
     let recentMfaExpires = 0;
 
+    // ── 10-minute session window ──────────────────────────────────────────
+    // After a successful TOTP verification the server sets a session flag and
+    // we mirror it in sessionStorage.  While the window is active no modal is
+    // shown and no one-time token is needed.
+    const SESSION_STORAGE_KEY = 'mfaEnforcerVerifiedUntil';
+
+    function setSessionWindow() {
+        try {
+            var windowSeconds = (window.MfaEnforcerConfig || {}).sessionWindowSeconds || 600;
+            sessionStorage.setItem(SESSION_STORAGE_KEY, String(Date.now() + windowSeconds * 1000));
+        } catch (_) {}
+    }
+
+    function isSessionWindowActive() {
+        try {
+            return parseInt(sessionStorage.getItem(SESSION_STORAGE_KEY) || '0', 10) > Date.now();
+        } catch (_) {
+            return false;
+        }
+    }
+
     function storeRecentMfaToken(token) {
         recentMfaToken = token;
         recentMfaExpires = Date.now() + MFA_TOKEN_TTL_MS;
+        setSessionWindow();
     }
 
     function getRecentMfaToken() {
@@ -446,6 +468,11 @@
 
     function challengeForm(form, originalSubmit, submitArgs) {
 
+        // Skip MFA challenge when the 10-minute session window is still active.
+        if (isSessionWindowActive()) {
+            return originalSubmit.apply(form, submitArgs || []);
+        }
+
         const action = formActionValue(form);
 
         // -------------------------------------------------
@@ -563,6 +590,12 @@
         if (!isActionProtectedBySettings('/actions/' + action, extractFormParams(form))) {
             return;
         }
+
+        // Skip challenge when 10-minute session window is still active.
+        if (isSessionWindowActive()) {
+            return;
+        }
+
         e.preventDefault();
         e.stopPropagation();
         showModal(function (code, done) {
@@ -621,6 +654,12 @@
             return;
         }
 
+        // Skip challenge when 10-minute session window is still active.
+        if (isSessionWindowActive()) {
+            btn.dataset.mfaEnforcerConfirmed = '1';
+            return;
+        }
+
         // Prevent duplicate modals for the same button
         if (btn.__mfaEnforcerPending) return;
         btn.__mfaEnforcerPending = true;
@@ -674,6 +713,12 @@
         if (!isActionProtectedBySettings(url, extractBodyParams(arguments[0]))) {
             return origSend.apply(xhr, arguments);
         }
+
+        // Skip challenge when 10-minute session window is still active.
+        if (isSessionWindowActive()) {
+            return origSend.apply(xhr, arguments);
+        }
+
         const sendArgs = arguments;
         const cachedToken = getRecentMfaToken();
 

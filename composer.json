@@ -20,8 +20,9 @@
         "rss": "https://github.com/taher-k5/mfa-enforcer/releases.atom"
     },
     "require": {
-        "php": ">=8.0.2",
-        "craftcms/cms": "^5.0.0"
+        "php": ">=8.1.0",
+        "craftcms/cms": "^4.0",
+        "spomky-labs/otphp": "^11.0"
     },
     "require-dev": {
         "craftcms/ecs": "dev-main",
@@ -45,9 +46,6 @@
     },
     "config": {
         "sort-packages": true,
-        "platform": {
-            "php": "8.0.2"
-        },
         "allow-plugins": {
             "yiisoft/yii2-composer": true,
             "craftcms/plugin-installer": true

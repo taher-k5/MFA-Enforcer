@@ -1,0 +1,284 @@
+{% extends "_layouts/cp" %}
+
+{% set title = "My MFA"|t %}
+{% set selectedSubnavItem = "setup" %}
+{% import "_includes/forms" as forms %}
+
+{% block content %}
+<div class="readable">
+
+	{% if isEnrolled %}
+
+		{# ──────────────────────────────────────────────────────────────
+		       ENROLLED: show status and disable form
+		       ────────────────────────────────────────────────────────────── #}
+
+		<div class="pane" style="margin-bottom:24px;">
+			<div class="flex flex-nowrap" style="align-items:center; gap:12px;">
+				<div class="status enabled" title="{{ 'Enabled'|t }}"></div>
+				<div>
+					<h2 style="margin:0 0 4px;">{{ "Two-factor authentication is enabled"|t }}</h2>
+					<p class="light" style="margin:0;">{{ "Your account is protected with TOTP (Time-based One-Time Passwords)."|t }}</p>
+				</div>
+			</div>
+		</div>
+
+		<p>{{ "Compatible with: Google Authenticator, Authy, 1Password, Microsoft Authenticator, and any TOTP-compatible app."|t }}</p>
+
+		<hr>
+
+		<h3>{{ "Disable two-factor authentication"|t }}</h3>
+		<p>{{ "Enter your current authentication code to confirm and disable MFA."|t }}</p>
+
+		<form method="post" accept-charset="UTF-8">
+			{{ csrfInput() }}
+			<input type="hidden" name="action" value="mfa-enforcer/setup/disable">
+			{{ redirectInput('mfa-enforcer/setup') }}
+
+			{{ forms.textField({
+            label: 'Authentication code'|t,
+            id: 'code-disable',
+            name: 'code',
+            inputmode: 'numeric',
+            autocomplete: 'one-time-code',
+            placeholder: '123 456',
+            maxlength: 10,
+            required: true,
+            size: 12,
+        }) }}
+
+			<input type="submit" class="btn caution" value="{{ 'Disable MFA'|t }}">
+		</form>
+
+	{% else %}
+
+		{# ──────────────────────────────────────────────────────────────
+		       NOT ENROLLED: show QR code, manual secret, and enable form
+		       ────────────────────────────────────────────────────────────── #}
+
+		<div class="pane" style="margin-bottom:24px;">
+			<div class="flex flex-nowrap" style="align-items:center; gap:12px;">
+				<div class="status" title="{{ 'Not enabled'|t }}"></div>
+				<div>
+					<h2 style="margin:0 0 4px;">{{ "Two-factor authentication is not enabled"|t }}</h2>
+					<p class="light" style="margin:0;">{{ "Follow the steps below to protect your account."|t }}</p>
+				</div>
+			</div>
+		</div>
+
+		{# Step 1 #}
+		<h3>{{ "Step 1 — Open your authenticator app"|t }}</h3>
+		<p>{{ "Open Google Authenticator, Authy, 1Password, Microsoft Authenticator, or any TOTP-compatible app and scan the QR code below."|t }}</p>
+
+		{# QR code container — populated by JavaScript using qrcode-generator #}
+		<div id="mfa-qr-wrapper" style="margin: 16px 0 28px;">
+			<div id="mfa-qr" style="display:inline-block; background:#fff; padding:4px; border-radius:6px; border:1px solid #ddd; line-height:0; vertical-align:top;"></div>
+			<p id="mfa-qr-loading" class="light" style="margin-top:8px;">{{ "Generating QR code…"|t }}</p>
+		</div>
+
+		{# Manual entry fallback #}
+		<details id="mfa-manual" style="margin: 8px 0 24px;">
+			<summary style="cursor:pointer; color:#0d6efd;">{{ "Can't scan? Enter the key manually"|t }}</summary>
+			<div style="margin-top:12px;">
+				<p class="light" style="margin:0 0 8px;">{{ "Enter these details into your app manually:"|t }}</p>
+				<table class="data" style="width:auto;">
+					<tr>
+						<th style="white-space:nowrap;">{{ "Account"|t }}</th>
+						<td>
+							<code>{{ currentUser.email }}</code>
+						</td>
+					</tr>
+					<tr>
+						<th style="white-space:nowrap;">{{ "Issuer"|t }}</th>
+						<td>
+							<code>{{ craft.app.systemName }}</code>
+						</td>
+					</tr>
+					<tr>
+						<th style="white-space:nowrap;">{{ "Key"|t }}</th>
+						<td>
+							<code id="mfa-secret-display" style="font-size:16px; letter-spacing:2px; word-break:break-all;">{{ secret }}</code>
+						</td>
+					</tr>
+					<tr>
+						<th style="white-space:nowrap;">{{ "Type"|t }}</th>
+						<td>
+							<code>Time-based (TOTP)</code>
+						</td>
+					</tr>
+					<tr>
+						<th style="white-space:nowrap;">{{ "Algorithm"|t }}</th>
+						<td>
+							<code>SHA1 · 6 digits · 30 s</code>
+						</td>
+					</tr>
+				</table>
+			</div>
+		</details>
+
+		{# Step 2 #}
+		<h3>{{ "Step 2 — Verify and enable"|t }}</h3>
+		<p>{{ "Enter the 6-digit code your app shows right now to confirm setup."|t }}</p>
+
+		<form method="post" accept-charset="UTF-8">
+			{{ csrfInput() }}
+			<input type="hidden" name="action" value="mfa-enforcer/setup/enable">
+			{{ redirectInput('mfa-enforcer/setup') }}
+
+			{{ forms.textField({
+            label: 'Authentication code'|t,
+            id: 'code-enable',
+            name: 'code',
+            inputmode: 'numeric',
+            autocomplete: 'one-time-code',
+            placeholder: '123 456',
+            maxlength: 10,
+            required: true,
+            size: 12,
+        }) }}
+
+			<input type="submit" class="btn submit" value="{{ 'Verify and enable MFA'|t }}">
+		</form>
+
+		<hr
+		style="margin-top:32px;">
+
+		{# Reset secret #}
+		<h4>{{ "Generate a new secret"|t }}</h4>
+		<p class="light">{{ "Only do this if you lost access to your authenticator app. This invalidates the current QR code."|t }}</p>
+		<button id="mfa-refresh-btn" class="btn" type="button">{{ "Generate new secret"|t }}</button>
+
+	{% endif %}
+
+</div>
+
+{#
+── QR rendering script ────────────────────────────────────────────────────
+IMPORTANT: This must be an inline <script> tag inside {% block content %},
+NOT a {% js %} block. The {% js %} tag outputs at Yii POS_END which is
+outside Craft's #main-container, so Craft's PJAX navigation never
+re-executes it. An inline <script> inside the content block IS re-executed
+on every PJAX navigation.
+#}
+{% if not isEnrolled %}
+		<script>
+			(function () {
+				'use strict';
+
+				var uri = {{ provisioningUri ? provisioningUri|json_encode|raw : 'null' }};
+
+				function drawQr(newUri) {
+					if (newUri) uri = newUri;
+					var effectiveUri = uri;
+					var container = document.getElementById('mfa-qr');
+					var loading = document.getElementById('mfa-qr-loading');
+
+					if (!container || !effectiveUri) {
+						return;
+					}
+
+					if (typeof window.qrcode === 'undefined') {
+						console.error('qrcode library not loaded');
+						if (loading) {
+							loading.textContent = '{{ "QR code library failed to load."|t|e('js') }}';
+						}
+						return;
+					}
+
+					try {
+						container.innerHTML = '';
+
+						var qr = window.qrcode(0, 'M');
+
+						qr.addData(effectiveUri);
+						qr.make();
+
+						container.innerHTML = qr.createSvgTag(5, 10);
+
+						if (loading) {
+							loading.style.display = 'none';
+						}
+
+					} catch (e) {
+						console.error(e);
+
+						if (loading) {
+							loading.textContent = '{{ "Could not generate QR code."|t|e('js') }}';
+						}
+					}
+				}
+
+				// Attach refresh button handler (idempotent across PJAX loads)
+				var refreshBtn = document.getElementById('mfa-refresh-btn');
+				if (refreshBtn && !refreshBtn.__mfaListenerAttached) {
+					refreshBtn.__mfaListenerAttached = true;
+					refreshBtn.addEventListener('click', function (e) {
+						e.preventDefault();
+						if (!confirm('{{ "This will generate a new secret. Your current QR code will no longer work. Are you sure?"|t|e('js') }}')) {
+							return;
+						}
+
+						refreshBtn.disabled = true;
+						var originalText = refreshBtn.textContent;
+						refreshBtn.textContent = '{{ "Generating…"|t|e('js') }}';
+
+						if (typeof Craft === 'undefined' || typeof Craft.sendActionRequest !== 'function') {
+							console.error('Craft.sendActionRequest not available');
+							refreshBtn.disabled = false;
+							refreshBtn.textContent = originalText;
+							if (typeof Craft !== 'undefined' && Craft.cp && typeof Craft.cp.displayError === 'function') {
+								Craft.cp.displayError('{{ "Unable to perform request."|t|e('js') }}');
+							}
+							return;
+						}
+
+						Craft.sendActionRequest('POST', 'mfa-enforcer/setup/refresh-secret')
+							.then(function (response) {
+								var data = response && response.data ? response.data : {};
+								if (data.success) {
+									var sd = document.getElementById('mfa-secret-display');
+									if (sd) sd.textContent = data.secret;
+									if (data.provisioningUri) drawQr(data.provisioningUri);
+                                    if (Craft.cp && typeof Craft.cp.displaySuccess === 'function') {
+                                        Craft.cp.displaySuccess('{{ "New secret key generated."|t|e('js') }}');
+                                    }
+								} else {
+									var msg = data.error || '{{ "Error. Please try again."|t|e('js') }}';
+									if (Craft.cp && typeof Craft.cp.displayError === 'function') Craft.cp.displayError(msg);
+								}
+							})
+							.catch(function (err) {
+								console.error(err);
+								if (Craft.cp && typeof Craft.cp.displayError === 'function') Craft.cp.displayError('{{ "Network error. Please try again."|t|e('js') }}');
+							})
+							.finally(function () {
+								refreshBtn.disabled = false;
+								refreshBtn.textContent = originalText;
+							});
+					});
+				}
+
+				// Initial draw (or poll on direct load if library hasn't loaded yet)
+				if (typeof window.qrcode !== 'undefined') {
+					drawQr();
+				} else {
+					var tries = 0;
+					var poll = setInterval(function () {
+						if (typeof window.qrcode !== 'undefined') {
+							clearInterval(poll);
+							drawQr();
+						} else if (++tries >= 50) {
+							clearInterval(poll);
+							var loading = document.getElementById('mfa-qr-loading');
+							if (loading) loading.textContent = '{{ "QR code unavailable — use the manual key above."|t|e('js') }}';
+							var m = document.getElementById('mfa-manual');
+							if (m) m.open = true;
+						}
+					}, 100);
+				}
+
+			})();
+		</script>
+{% endif %}
+
+{% endblock %}

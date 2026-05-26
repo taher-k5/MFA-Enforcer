@@ -39,7 +39,7 @@ class SettingsController extends Controller
             return null;
         }
 
-        Craft::$app->getSession()->setNotice(Craft::t('app', 'Settings saved.'));
+        Craft::$app->getSession()->setSuccess(Craft::t('app', 'Settings saved.'));
         return $this->redirectToPostedUrl();
     }
 
