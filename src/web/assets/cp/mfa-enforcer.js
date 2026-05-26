@@ -23,13 +23,36 @@
     }
 
     const TOKEN_HEADER = 'X-Mfa-Enforcer-Token';
+    const MFA_TOKEN_TTL_MS = 5000;
+
+    let recentMfaToken = null;
+    let recentMfaExpires = 0;
+
+    function storeRecentMfaToken(token) {
+        recentMfaToken = token;
+        recentMfaExpires = Date.now() + MFA_TOKEN_TTL_MS;
+    }
+
+    function getRecentMfaToken() {
+        if (!recentMfaToken) {
+            return null;
+        }
+
+        if (Date.now() > recentMfaExpires) {
+            recentMfaToken = null;
+            recentMfaExpires = 0;
+            return null;
+        }
+
+        return recentMfaToken;
+    }
 
     // Universal "write-shaped action" detection. Any Craft CP request to
     // /actions/<controller>/<...keyword> where the keyword indicates a mutating
     // operation is a candidate for MFA. Server-side guards decide whether the
     // particular resource (section / volume / etc.) is actually protected and
     // whether the supplied token was required.
-    const WRITE_KEYWORD_RE = /(^|\/)actions\/[^?#]*?(save|create|delete|install|uninstall|apply|upload|replace|activate|suspend|unsuspend|config-sync)\b/i;
+    const WRITE_KEYWORD_RE = /(^|\/)actions\/[^?#]*?(save|create|delete|install|uninstall|apply|upload|replace|activate|suspend|unsuspend|config-sync|rebuild|retry|release)\b/i;
     // Known write-shaped routes that are *not* user-initiated content writes
     // and therefore should never prompt. Drafts auto-save / discard / revert
     // happen constantly in the background and must be silently allowed —
@@ -155,6 +178,32 @@
             if (/\/mfa-enforcer\/settings\/save-general\b/.test(u) ||
                 /\/mfa-enforcer\/settings\/save-protected-actions\b/.test(u)) {
                 return !!getConfig().userEnrolled;
+            }
+
+            // Utilities: Project Config actions
+            if (/project-config\/rebuild\b/.test(u)) {
+                return !!actions['utilities.projectConfig.rebuild'];
+            }
+            if (/project-config\/download\b/.test(u)) {
+                return !!actions['utilities.projectConfig.download'];
+            }
+            if (/\/config-sync\b/.test(u)) {
+                // Protect the explicit "reapply everything" flow when force=1
+                const f = params && params.force;
+                if (f === '1' || f === 1 || f === true) return !!actions['utilities.projectConfig.reapply'];
+            }
+
+            // Utilities: Queue Manager actions
+            if (/queue\/retry(-all)?\b/.test(u)) {
+                return !!actions['utilities.queueManager.retry'];
+            }
+            if (/queue\/release(-all)?\b/.test(u)) {
+                return !!actions['utilities.queueManager.release'];
+            }
+
+            // Utilities: Find and Replace
+            if (/find-and-replace-perform-action\b/.test(u)) {
+                return !!actions['utilities.findAndReplace'];
             }
 
             // Resolve the resource id for the current operation. Priority:
@@ -410,7 +459,7 @@
             '<p>Please set up MFA via <strong> My MFA</strong>.</p>' +
             '</div>').appendTo($form);
         const $btnRow = $('<div style="text-align:right; margin-top:12px;" />').appendTo($body);
-        const $goto = $('<button type="button" style="margin-right:8px;" class="btn submit">Set up My MFA</button>').appendTo($btnRow);
+        const $goto = $('<button type="button" style="margin-right:8px;" class="btn submit">Set up MFA</button>').appendTo($btnRow);
         const $cancel = $('<button type="button" class="btn">Cancel</button>').appendTo($btnRow);
 
         const modal = new window.Garnish.Modal($form, {
@@ -522,6 +571,7 @@
         showModal(function (code, done) {
             verifyCode(code, function (err, token) {
                 if (err) { done(err); return; }
+                storeRecentMfaToken(token);
                 injectTokenInput(form, token);
                 form.dataset.mfaEnforcerConfirmed = '1';
                 done(null);
@@ -538,6 +588,15 @@
                 return origFormSubmit.apply(this, arguments);
             }
 
+            const cachedToken = getRecentMfaToken();
+
+            if (cachedToken) {
+                injectTokenInput(this, cachedToken);
+                this.dataset.mfaEnforcerConfirmed = '1';
+
+                return origFormSubmit.apply(this, arguments);
+            }
+
             return challengeForm(this, origFormSubmit, arguments);
         };
     if (typeof HTMLFormElement.prototype.requestSubmit === 'function') {
@@ -545,6 +604,15 @@
         HTMLFormElement.prototype.requestSubmit = function () {
 
             if (this.dataset.mfaEnforcerConfirmed === '1') {
+                return origRequestSubmit.apply(this, arguments);
+            }
+
+            const cachedToken = getRecentMfaToken();
+
+            if (cachedToken) {
+                injectTokenInput(this, cachedToken);
+                this.dataset.mfaEnforcerConfirmed = '1';
+
                 return origRequestSubmit.apply(this, arguments);
             }
 
@@ -605,6 +673,7 @@
                 injectTokenInput(form, token);
                 form.dataset.mfaEnforcerConfirmed = '1';
                 done(null);
+                storeRecentMfaToken(token);
 
                 // IMPORTANT:
                 // Use requestSubmit() so Craft keeps its draft lifecycle intact
@@ -667,10 +736,60 @@
             verifyCode(code, function (err, token) {
                 btn.__mfaEnforcerPending = false;
                 if (err) { done(err); return; }
+                storeRecentMfaToken(token);
                 done(null);
                 btn.dataset.mfaEnforcerConfirmed = '1';
                 // Re-dispatch the original click after a short delay to avoid re-entry issues
                 setTimeout(function () { btn.click(); }, 10);
+            });
+        }, function () {
+            btn.__mfaEnforcerPending = false;
+        });
+    }, true);
+
+    // ---- Click interception for Project Config "Download" button ----
+    document.addEventListener('click', function (e) {
+        if (!e || !e.target) return;
+        const btn = (typeof e.target.closest === 'function') ? e.target.closest('#download') : null;
+        if (!btn) return;
+
+        try {
+            const _cfg = getConfig();
+            if (!_cfg || !_cfg.applies || !_cfg.protectedActions) return;
+            if (!_cfg.protectedActions['utilities.projectConfig.download']) return;
+        } catch (_) { return; }
+
+        if (btn.__mfaEnforcerConfirmed === '1') return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        if (!getConfig().userEnrolled) {
+            showEnrollModal();
+            return;
+        }
+
+        if (btn.__mfaEnforcerPending) return;
+        btn.__mfaEnforcerPending = true;
+
+        showModal(function (code, done) {
+            verifyCode(code, function (err, token) {
+                btn.__mfaEnforcerPending = false;
+                if (err) { done(err); return; }
+                done(null);
+                btn.__mfaEnforcerConfirmed = '1';
+                // Call Craft.downloadFromUrl with token appended to params
+                const params = {};
+                if (Craft.csrfTokenName) params[Craft.csrfTokenName] = Craft.csrfTokenValue;
+                params['mfaEnforcerToken'] = token;
+                if (typeof Craft.downloadFromUrl === 'function') {
+                    Craft.downloadFromUrl('GET', (getConfig() && getConfig().actionUrls && getConfig().actionUrls['project-config/download']) || (window && window.Craft && window.Craft.getActionUrl && window.Craft.getActionUrl('project-config/download')) || '', params);
+                } else {
+                    // Fallback: build and navigate to URL
+                    const url = (typeof window.Craft !== 'undefined' && window.Craft.getActionUrl) ? window.Craft.getActionUrl('project-config/download') : '';
+                    const query = Object.keys(params).map(k => encodeURIComponent(k) + '=' + encodeURIComponent(params[k])).join('&');
+                    window.location.href = url + (url.indexOf('?') === -1 ? '?' : '&') + query;
+                }
             });
         }, function () {
             btn.__mfaEnforcerPending = false;
@@ -715,10 +834,31 @@
             try { showEnrollModal(); } catch (_) {}
             return origSend.apply(xhr, arguments);
         }
+
+        const cachedToken = getRecentMfaToken();
+
+        if (cachedToken) {
+            xhr.__mfaEnforcerPassed = true;
+
+            const headers = xhr.__mfaEnforcerHeaders
+                ? xhr.__mfaEnforcerHeaders.slice()
+                : [];
+
+            origOpen.call(xhr, method, url, true);
+
+            for (const [n, v] of headers) {
+                origSetHeader.call(xhr, n, v);
+            }
+
+            origSetHeader.call(xhr, TOKEN_HEADER, cachedToken);
+
+            return origSend.apply(xhr, arguments);
+        }
         showModal(function (code, done) {
             verifyCode(code, function (err, token) {
                 if (err) { done(err); return; }
                 done(null);
+                storeRecentMfaToken(token);
                 const headers = xhr.__mfaEnforcerHeaders ? xhr.__mfaEnforcerHeaders.slice() : [];
                 xhr.__mfaEnforcerPassed = true;
                 origOpen.call(xhr, method, url, true);
@@ -764,6 +904,15 @@
             return origFetch.apply(this, arguments);
         }
 
+        const cachedToken = getRecentMfaToken();
+
+        if (cachedToken) {
+            headers.set(TOKEN_HEADER, cachedToken);
+            newInit.headers = headers;
+
+            return origFetch.call(window, input, newInit);
+        }
+
         // If user not enrolled, show the enrol modal and reject the fetch promise.
         if (!getConfig().userEnrolled) {
             try { showEnrollModal(); } catch (_) {}
@@ -775,6 +924,7 @@
                 verifyCode(code, function (err, token) {
                     if (err) { done(err); return; }
                     done(null);
+                    storeRecentMfaToken(token);
                     headers.set(TOKEN_HEADER, token);
                     newInit.headers = headers;
                     origFetch.call(window, input, newInit).then(function (response) {

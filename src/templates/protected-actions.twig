@@ -112,6 +112,50 @@
                 <td><strong>{{ "Reapply Everything"|t }}</strong></td>
                 <td>{{ checkbox("utilities.projectConfig.reapply", protected) }}</td>
             </tr>
+            <tr>
+                <td><strong>{{ "Rebuild"|t }}</strong></td>
+                <td>{{ checkbox("utilities.projectConfig.rebuild", protected) }}</td>
+            </tr>
+            <tr>
+                <td><strong>{{ "Download"|t }}</strong></td>
+                <td>{{ checkbox("utilities.projectConfig.download", protected) }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    {# ---- Queue Manager ---- #}
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th scope="col">{{ "Queue Manager"|t }}</th>
+                <th scope="col" class="thin">{{ 'Protected'|t }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>{{ "Retry"|t }}</strong></td>
+                <td>{{ checkbox("utilities.queueManager.retry", protected) }}</td>
+            </tr>
+            <tr>
+                <td><strong>{{ "Release"|t }}</strong></td>
+                <td>{{ checkbox("utilities.queueManager.release", protected) }}</td>
+            </tr>
+        </tbody>
+    </table>
+
+    {# ---- Find and Replace ---- #}
+    <table class="data fullwidth">
+        <thead>
+            <tr>
+                <th scope="col">{{ 'Find and Replace'|t }}</th>
+                <th scope="col" class="thin">{{ 'Protected'|t }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>{{ "Find and Replace"|t }}</strong></td>
+                <td>{{ checkbox("utilities.findAndReplace", protected) }}</td>
+            </tr>
         </tbody>
     </table>
 

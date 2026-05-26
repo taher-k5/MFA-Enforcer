@@ -127,7 +127,7 @@ class EventGuard extends Component
             }
         });
 
-        // ---- Utilities: Project Config reapply ----
+        // ---- Utilities: Project Config actions (reapply, rebuild, download) ----
         Event::on(Application::class, Application::EVENT_BEFORE_ACTION, function (ActionEvent $event) {
             try {
                 $request = Craft::$app->getRequest();
@@ -137,33 +137,47 @@ class EventGuard extends Component
                 }
 
                 $actionId = (string)($event->action->getUniqueId() ?? '');
-                if (stripos($actionId, 'config-sync/') === false) {
-                    return;
-                }
+                $settings = Plugin::getInstance()->getSettings();
 
-                // Determine whether this is the "Reapply everything" flow (force=1)
-                $force = false;
-                $bodyForce = $request->getBodyParam('force');
-                if ($bodyForce !== null) {
-                    $force = (bool)$bodyForce;
-                }
-                $params = $request->getBodyParam('params');
-                if (is_array($params) && array_key_exists('force', $params)) {
-                    $force = (bool)$params['force'];
-                }
-                if (!$force) {
-                    $qForce = $request->getQueryParam('force');
-                    if ($qForce !== null) {
-                        $force = (bool)$qForce;
+                // Figure out which project-config action this is and whether it's protected
+                $protectedKey = null;
+
+                // config-sync with force=1 => reapply everything
+                if (stripos($actionId, 'config-sync/') !== false) {
+                    // Determine whether this is the "Reapply everything" flow (force=1)
+                    $force = false;
+                    $bodyForce = $request->getBodyParam('force');
+                    if ($bodyForce !== null) {
+                        $force = (bool)$bodyForce;
+                    }
+                    $params = $request->getBodyParam('params');
+                    if (is_array($params) && array_key_exists('force', $params)) {
+                        $force = (bool)$params['force'];
+                    }
+                    if (!$force) {
+                        $qForce = $request->getQueryParam('force');
+                        if ($qForce !== null) {
+                            $force = (bool)$qForce;
+                        }
+                    }
+                    if ($force) {
+                        $protectedKey = 'utilities.projectConfig.reapply';
                     }
                 }
 
-                if (!$force) {
+                if ($protectedKey === null && stripos($actionId, 'project-config/rebuild') !== false) {
+                    $protectedKey = 'utilities.projectConfig.rebuild';
+                }
+
+                if ($protectedKey === null && stripos($actionId, 'project-config/download') !== false) {
+                    $protectedKey = 'utilities.projectConfig.download';
+                }
+
+                if ($protectedKey === null) {
                     return;
                 }
 
-                $settings = Plugin::getInstance()->getSettings();
-                if (empty($settings->protectedActions) || empty($settings->protectedActions['utilities.projectConfig.reapply'])) {
+                if (empty($settings->protectedActions) || empty($settings->protectedActions[$protectedKey] ?? null)) {
                     return;
                 }
 
@@ -189,6 +203,100 @@ class EventGuard extends Component
                 }
             } catch (\Throwable $e) {
                 // Best-effort only — don't crash the CP
+            }
+        });
+
+        // ---- Utilities: Queue Manager actions (retry/release single & all) ----
+        Event::on(Application::class, Application::EVENT_BEFORE_ACTION, function (ActionEvent $event) {
+            try {
+                $request = Craft::$app->getRequest();
+
+                if ($request->getIsConsoleRequest() || !$request->getIsCpRequest()) {
+                    return;
+                }
+
+                $actionId = (string)($event->action->getUniqueId() ?? '');
+                $settings = Plugin::getInstance()->getSettings();
+
+                $protectedKey = null;
+                if (stripos($actionId, 'queue/retry') !== false) {
+                    // covers retry and retry-all
+                    $protectedKey = 'utilities.queueManager.retry';
+                } elseif (stripos($actionId, 'queue/release') !== false) {
+                    // covers release and release-all
+                    $protectedKey = 'utilities.queueManager.release';
+                }
+
+                if ($protectedKey === null) {
+                    return;
+                }
+
+                if (empty($settings->protectedActions) || empty($settings->protectedActions[$protectedKey] ?? null)) {
+                    return;
+                }
+
+                if (!$this->audienceApplies()) {
+                    return;
+                }
+
+                $reason = $this->verifyOrReason();
+                if ($reason === null) {
+                    return;
+                }
+
+                $event->isValid = false;
+                if ($request->getIsAjax() || $request->getAcceptsJson()) {
+                    Craft::$app->getResponse()->setStatusCode(401);
+                    Craft::$app->getResponse()->data = ['error' => $reason];
+                } else {
+                    Craft::$app->getSession()->setError($reason);
+                    Craft::$app->getResponse()->redirect($request->getReferrer() ?: '');
+                    Craft::$app->end();
+                }
+            } catch (\Throwable $e) {
+                // Best-effort only — don't crash the CP
+            }
+        });
+
+        // ---- Utilities: Find and Replace ----
+        Event::on(Application::class, Application::EVENT_BEFORE_ACTION, function (ActionEvent $event) {
+            try {
+                $request = Craft::$app->getRequest();
+
+                if ($request->getIsConsoleRequest() || !$request->getIsCpRequest() || !$request->getIsPost()) {
+                    return;
+                }
+
+                $actionId = (string)($event->action->getUniqueId() ?? '');
+                if (stripos($actionId, 'find-and-replace-perform-action') === false) {
+                    return;
+                }
+
+                $settings = Plugin::getInstance()->getSettings();
+                if (empty($settings->protectedActions) || empty($settings->protectedActions['utilities.findAndReplace'] ?? null)) {
+                    return;
+                }
+
+                if (!$this->audienceApplies()) {
+                    return;
+                }
+
+                $reason = $this->verifyOrReason();
+                if ($reason === null) {
+                    return;
+                }
+
+                $event->isValid = false;
+                if ($request->getIsAjax() || $request->getAcceptsJson()) {
+                    Craft::$app->getResponse()->setStatusCode(401);
+                    Craft::$app->getResponse()->data = ['error' => $reason];
+                } else {
+                    Craft::$app->getSession()->setError($reason);
+                    Craft::$app->getResponse()->redirect($request->getReferrer() ?: '');
+                    Craft::$app->end();
+                }
+            } catch (\Throwable $e) {
+                // Best-effort only
             }
         });
 
@@ -289,7 +397,8 @@ class EventGuard extends Component
         $request = Craft::$app->getRequest();
         $headerToken = $request->getHeaders()->get('X-Mfa-Enforcer-Token');
         $bodyToken = $request->getBodyParam('mfaEnforcerToken', '');
-        $token = (string)($headerToken ?: $bodyToken);
+        $queryToken = $request->getQueryParam('mfaEnforcerToken');
+        $token = (string)($headerToken ?: $bodyToken ?: $queryToken);
         if ($token === '') {
             return 'MFA confirmation is required for this action.';
         }
