@@ -13,16 +13,6 @@ class ChallengeController extends Controller
 {
     protected array|int|bool $allowAnonymous = false;
 
-    /**
-     * Craft session key prefix for the 10-minute MFA verification window.
-     * The full key is SESSION_WINDOW_KEY_PREFIX . $userId.
-     */
-    public const SESSION_WINDOW_KEY_PREFIX = 'mfaEnforcer.verified.';
-
-    /**
-     * Duration (seconds) that a successful TOTP verification remains trusted.
-     */
-    public const SESSION_WINDOW_SECONDS = 600; // 10 minutes
 
     public function actionVerify(): Response
     {
@@ -69,16 +59,11 @@ class ChallengeController extends Controller
 
         $this->clearFailures($user->id);
 
-        // Set a 10-minute session window so the user doesn't need to re-verify soon.
-        $sessionKey = self::SESSION_WINDOW_KEY_PREFIX . $user->id;
-        Craft::$app->getSession()->set($sessionKey, time() + self::SESSION_WINDOW_SECONDS);
-
         $token = $plugin->tokens->issue($user->id, $actionKey);
 
         return $this->asJson([
-            'success'              => true,
-            'token'                => $token,
-            'sessionWindowSeconds' => self::SESSION_WINDOW_SECONDS,
+            'success' => true,
+            'token'   => $token,
         ]);
     }
 

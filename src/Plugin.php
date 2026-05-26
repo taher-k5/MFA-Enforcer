@@ -300,6 +300,11 @@ class Plugin extends BasePlugin
                     'csrfTokenName' => Craft::$app->getRequest()->csrfParam,
                     'csrfToken' => Craft::$app->getRequest()->getCsrfToken(),
                     'applies' => $applies,
+                    // true when the current user has set up and enabled MFA for their account.
+                    // The JS uses this to gate the settings-save modal independently of the
+                    // group-level `applies` flag and the `protectedActions` config.
+                    'userEnrolled' => $this->totp->isEnrolled($user),
+                    'setupUrl' => \craft\helpers\UrlHelper::cpUrl('mfa-enforcer/setup'),
                     'protectedActions' => $applies ? $settings->protectedActions : [],
                     'isUnpublishedDraft' => $isUnpublishedDraft,
                     'currentResourceContext' => $currentResourceContext,

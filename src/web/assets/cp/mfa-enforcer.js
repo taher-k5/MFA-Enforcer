@@ -2,7 +2,15 @@
     'use strict';
 
     const config = window.MfaEnforcerConfig;
-    if (!config || !config.applies || !config.protectedActions || Object.keys(config.protectedActions).length === 0) {
+    if (!config) {
+        return;
+    }
+    // Run the interceptors when EITHER:
+    //   (a) content-type protection is active (applies + at least one protectedAction), OR
+    //   (b) the current user is enrolled in MFA (to protect plugin settings saves).
+    // Without (b) the settings-save modal would never appear when protectedActions is empty.
+    const hasContentProtection = config.applies && config.protectedActions && Object.keys(config.protectedActions).length > 0;
+    if (!hasContentProtection && !config.userEnrolled) {
         return;
     }
 
@@ -15,51 +23,6 @@
     }
 
     const TOKEN_HEADER = 'X-Mfa-Enforcer-Token';
-    const MFA_TOKEN_TTL_MS = 5000;
-    let recentMfaToken = null;
-    let recentMfaExpires = 0;
-
-    // ── 10-minute session window ──────────────────────────────────────────
-    // After a successful TOTP verification the server sets a session flag and
-    // we mirror it in sessionStorage.  While the window is active no modal is
-    // shown and no one-time token is needed.
-    const SESSION_STORAGE_KEY = 'mfaEnforcerVerifiedUntil';
-
-    function setSessionWindow() {
-        try {
-            var windowSeconds = (window.MfaEnforcerConfig || {}).sessionWindowSeconds || 600;
-            sessionStorage.setItem(SESSION_STORAGE_KEY, String(Date.now() + windowSeconds * 1000));
-        } catch (_) {}
-    }
-
-    function isSessionWindowActive() {
-        try {
-            return parseInt(sessionStorage.getItem(SESSION_STORAGE_KEY) || '0', 10) > Date.now();
-        } catch (_) {
-            return false;
-        }
-    }
-
-    function storeRecentMfaToken(token) {
-        recentMfaToken = token;
-        recentMfaExpires = Date.now() + MFA_TOKEN_TTL_MS;
-        setSessionWindow();
-    }
-
-    function getRecentMfaToken() {
-
-        if (!recentMfaToken) {
-            return null;
-        }
-
-        if (Date.now() > recentMfaExpires) {
-            recentMfaToken = null;
-            recentMfaExpires = 0;
-            return null;
-        }
-
-        return recentMfaToken;
-    }
 
     // Universal "write-shaped action" detection. Any Craft CP request to
     // /actions/<controller>/<...keyword> where the keyword indicates a mutating
@@ -185,6 +148,14 @@
             if (!actions) return false;
             let u;
             try { u = decodeURIComponent(url).toLowerCase(); } catch (_) { u = (url || '').toLowerCase(); }
+
+            // MFA Enforcer plugin settings save routes.
+            // Only show the modal when the user is actively enrolled in MFA;
+            // un-enrolled users can change settings without a challenge.
+            if (/\/mfa-enforcer\/settings\/save-general\b/.test(u) ||
+                /\/mfa-enforcer\/settings\/save-protected-actions\b/.test(u)) {
+                return !!getConfig().userEnrolled;
+            }
 
             // Resolve the resource id for the current operation. Priority:
             //   1. explicit id in the request body (sectionId / groupId / setId / globalSetId)
@@ -427,6 +398,49 @@
         state.modal.show();
     }
 
+    // ---- Enrolment modal (shown when the user is not enrolled in MFA) ----
+    let enrollModalState = null;
+    function ensureEnrollModal() {
+        if (enrollModalState) return enrollModalState;
+        if (typeof window.Garnish === 'undefined' || typeof window.jQuery === 'undefined') return null;
+        const $ = window.jQuery;
+        const $form = $('<form class="modal secure fitted mfa-enforcer-enrol-modal" />');
+        const $body = $('<div class="body" style="padding-bottom:20px; min-width:420px;">' +
+            '<p>You need to enable two-factor authentication before performing this action.</p>' +
+            '<p>Please set up MFA via <strong> My MFA</strong>.</p>' +
+            '</div>').appendTo($form);
+        const $btnRow = $('<div style="text-align:right; margin-top:12px;" />').appendTo($body);
+        const $goto = $('<button type="button" style="margin-right:8px;" class="btn submit">Set up My MFA</button>').appendTo($btnRow);
+        const $cancel = $('<button type="button" class="btn">Cancel</button>').appendTo($btnRow);
+
+        const modal = new window.Garnish.Modal($form, {
+            closeOtherModals: false,
+            autoShow: false,
+            hideOnEsc: true,
+            hideOnShadeClick: true,
+            onFadeIn: () => {},
+        });
+
+        $goto.on('click', function () {
+            try {
+                const url = (getConfig() && getConfig().setupUrl) || '/admin/mfa-enforcer/setup';
+                window.location.href = url;
+            } catch (_) {
+                window.location.href = '/admin/mfa-enforcer/setup';
+            }
+        });
+        $cancel.on('click', function () { modal.hide(); });
+
+        enrollModalState = { modal };
+        return enrollModalState;
+    }
+
+    function showEnrollModal() {
+        const s = ensureEnrollModal();
+        if (!s) return;
+        s.modal.show();
+    }
+
     function verifyCode(code, callback) {
         const body = new URLSearchParams();
         body.append('code', code);
@@ -467,12 +481,6 @@
     }
 
     function challengeForm(form, originalSubmit, submitArgs) {
-
-        // Skip MFA challenge when the 10-minute session window is still active.
-        if (isSessionWindowActive()) {
-            return originalSubmit.apply(form, submitArgs || []);
-        }
-
         const action = formActionValue(form);
 
         // -------------------------------------------------
@@ -506,10 +514,14 @@
         if (!isActionProtectedBySettings(actionUrl, extractFormParams(form))) {
             return originalSubmit.apply(form, submitArgs || []);
         }
+        // If user is not enrolled, show the enrol modal (only for protected actions).
+        if (!getConfig().userEnrolled) {
+            showEnrollModal();
+            return;
+        }
         showModal(function (code, done) {
             verifyCode(code, function (err, token) {
                 if (err) { done(err); return; }
-                storeRecentMfaToken(token);
                 injectTokenInput(form, token);
                 form.dataset.mfaEnforcerConfirmed = '1';
                 done(null);
@@ -526,13 +538,6 @@
                 return origFormSubmit.apply(this, arguments);
             }
 
-            const cachedToken = getRecentMfaToken();
-
-            if (cachedToken) {
-                injectTokenInput(this, cachedToken);
-                this.dataset.mfaEnforcerConfirmed = '1';
-                return origFormSubmit.apply(this, arguments);
-            }
             return challengeForm(this, origFormSubmit, arguments);
         };
     if (typeof HTMLFormElement.prototype.requestSubmit === 'function') {
@@ -540,14 +545,6 @@
         HTMLFormElement.prototype.requestSubmit = function () {
 
             if (this.dataset.mfaEnforcerConfirmed === '1') {
-                return origRequestSubmit.apply(this, arguments);
-            }
-
-            const cachedToken = getRecentMfaToken();
-
-            if (cachedToken) {
-                injectTokenInput(this, cachedToken);
-                this.dataset.mfaEnforcerConfirmed = '1';
                 return origRequestSubmit.apply(this, arguments);
             }
 
@@ -591,17 +588,20 @@
             return;
         }
 
-        // Skip challenge when 10-minute session window is still active.
-        if (isSessionWindowActive()) {
+        // If not enrolled, show the enrol modal instead of asking for a code.
+        if (!getConfig().userEnrolled) {
+            e.preventDefault();
+            e.stopPropagation();
+            showEnrollModal();
             return;
         }
 
+        // Always show the MFA modal for protected actions.
         e.preventDefault();
         e.stopPropagation();
         showModal(function (code, done) {
             verifyCode(code, function (err, token) {
                 if (err) { done(err); return; }
-                storeRecentMfaToken(token);
                 injectTokenInput(form, token);
                 form.dataset.mfaEnforcerConfirmed = '1';
                 done(null);
@@ -648,15 +648,11 @@
 
         if (btn.dataset.mfaEnforcerConfirmed === '1') return;
 
-        const cachedToken = getRecentMfaToken();
-        if (cachedToken) {
-            btn.dataset.mfaEnforcerConfirmed = '1';
-            return;
-        }
-
-        // Skip challenge when 10-minute session window is still active.
-        if (isSessionWindowActive()) {
-            btn.dataset.mfaEnforcerConfirmed = '1';
+        // If user not enrolled, show enrol modal instead of prompting for code.
+        if (!getConfig().userEnrolled) {
+            e.preventDefault();
+            e.stopPropagation();
+            showEnrollModal();
             return;
         }
 
@@ -671,7 +667,6 @@
             verifyCode(code, function (err, token) {
                 btn.__mfaEnforcerPending = false;
                 if (err) { done(err); return; }
-                storeRecentMfaToken(token);
                 done(null);
                 btn.dataset.mfaEnforcerConfirmed = '1';
                 // Re-dispatch the original click after a short delay to avoid re-entry issues
@@ -714,31 +709,15 @@
             return origSend.apply(xhr, arguments);
         }
 
-        // Skip challenge when 10-minute session window is still active.
-        if (isSessionWindowActive()) {
-            return origSend.apply(xhr, arguments);
-        }
-
         const sendArgs = arguments;
-        const cachedToken = getRecentMfaToken();
-
-        if (cachedToken) {
-
-            xhr.__mfaEnforcerPassed = true;
-            const headers = xhr.__mfaEnforcerHeaders ? xhr.__mfaEnforcerHeaders.slice() : [];
-            origOpen.call(xhr, method, url, true);
-
-            for (const [n, v] of headers) {
-                origSetHeader.call(xhr, n, v);
-            }
-
-            origSetHeader.call(xhr, TOKEN_HEADER, cachedToken);
+        // If user not enrolled, show the enrol modal and abort the request.
+        if (!getConfig().userEnrolled) {
+            try { showEnrollModal(); } catch (_) {}
             return origSend.apply(xhr, arguments);
         }
         showModal(function (code, done) {
             verifyCode(code, function (err, token) {
                 if (err) { done(err); return; }
-                storeRecentMfaToken(token);
                 done(null);
                 const headers = xhr.__mfaEnforcerHeaders ? xhr.__mfaEnforcerHeaders.slice() : [];
                 xhr.__mfaEnforcerPassed = true;
@@ -785,20 +764,16 @@
             return origFetch.apply(this, arguments);
         }
 
-        // Reuse MFA for chained Craft requests
-        const cachedToken = getRecentMfaToken();
-
-        if (cachedToken) {
-            headers.set(TOKEN_HEADER, cachedToken);
-            newInit.headers = headers;
-            return origFetch.call(window, input, newInit);
+        // If user not enrolled, show the enrol modal and reject the fetch promise.
+        if (!getConfig().userEnrolled) {
+            try { showEnrollModal(); } catch (_) {}
+            return Promise.reject(new Error('MFA enrollment required'));
         }
 
         return new Promise(function (resolve, reject) {
             showModal(function (code, done) {
                 verifyCode(code, function (err, token) {
                     if (err) { done(err); return; }
-                    storeRecentMfaToken(token);
                     done(null);
                     headers.set(TOKEN_HEADER, token);
                     newInit.headers = headers;
@@ -815,7 +790,6 @@
                                 showModal(function (code, done) {
                                     verifyCode(code, function (err, token) {
                                         if (err) { done(err); return; }
-                                        storeRecentMfaToken(token);
                                         done(null);
                                         headers.set(TOKEN_HEADER, token);
                                         newInit.headers = headers;

@@ -105,10 +105,6 @@ class SetupController extends Controller
 
         $plugin->totp->enableForUser($user);
 
-        // Immediately set the session window so the user does not need to
-        // re-verify for the next 10 minutes.
-        $this->setSessionWindow($user->id);
-
         Craft::$app->getSession()->setSuccess(
             Craft::t('app', 'Two-factor authentication has been enabled.')
         );
@@ -144,9 +140,6 @@ class SetupController extends Controller
 
         $plugin->totp->disableForUser($user);
 
-        // Clear the session window when MFA is disabled.
-        Craft::$app->getSession()->remove(ChallengeController::SESSION_WINDOW_KEY_PREFIX . $user->id);
-
         Craft::$app->getSession()->setNotice(
             Craft::t('app', 'Two-factor authentication has been disabled.')
         );
@@ -172,18 +165,7 @@ class SetupController extends Controller
 
         Plugin::getInstance()->totp->disableForUser($user);
 
-        // Clear their session window too.
-        Craft::$app->getSession()->remove(ChallengeController::SESSION_WINDOW_KEY_PREFIX . $userId);
-
         return $this->asJson(['success' => true]);
     }
 
-    // -------------------------------------------------------------------------
-    // Private helpers
-    // -------------------------------------------------------------------------
-    private function setSessionWindow(int $userId): void
-    {
-        $key = ChallengeController::SESSION_WINDOW_KEY_PREFIX . $userId;
-        Craft::$app->getSession()->set($key, time() + ChallengeController::SESSION_WINDOW_SECONDS);
-    }
 }

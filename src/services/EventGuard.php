@@ -80,6 +80,53 @@ class EventGuard extends Component
             $this->challengeScoped($event, 'category', $cat->groupId, 'delete');
         });
 
+        // ---- MFA Enforcer plugin settings saves ----
+        // Protect our own settings controller so an enrolled user cannot change
+        // enforcement rules or disable protections without first confirming MFA.
+        // Un-enrolled users are allowed through — they can't be MFA-challenged yet.
+        Event::on(Application::class, Application::EVENT_BEFORE_ACTION, function (ActionEvent $event) {
+            try {
+                $request = Craft::$app->getRequest();
+
+                if ($request->getIsConsoleRequest() || !$request->getIsCpRequest() || !$request->getIsPost()) {
+                    return;
+                }
+
+                $actionId = (string)($event->action->getUniqueId() ?? '');
+                if (stripos($actionId, 'mfa-enforcer/settings/') !== 0) {
+                    return;
+                }
+
+                $user = Craft::$app->getUser()->getIdentity();
+                if ($user === null) {
+                    return;
+                }
+
+                // Only require MFA for enrolled users — skip if not set up yet.
+                if (!Plugin::getInstance()->totp->isEnrolled($user)) {
+                    return;
+                }
+
+                $reason = $this->verifyOrReason();
+                if ($reason === null) {
+                    return;
+                }
+
+                // Block and surface the error to the browser.
+                $event->isValid = false;
+                if ($request->getIsAjax() || $request->getAcceptsJson()) {
+                    Craft::$app->getResponse()->setStatusCode(401);
+                    Craft::$app->getResponse()->data = ['error' => $reason];
+                } else {
+                    Craft::$app->getSession()->setError($reason);
+                    Craft::$app->getResponse()->redirect($request->getReferrer() ?: '');
+                    Craft::$app->end();
+                }
+            } catch (\Throwable $e) {
+                // Best-effort only — never crash the CP.
+            }
+        });
+
         // ---- Utilities: Project Config reapply ----
         Event::on(Application::class, Application::EVENT_BEFORE_ACTION, function (ActionEvent $event) {
             try {
@@ -238,13 +285,6 @@ class EventGuard extends Component
             return 'This action requires two-factor authentication, but your account is not enrolled. Please set up MFA via MFA Enforcer → My MFA before retrying.';
         }
 
-        // ---------------------------------------------------------------
-        // 10-minute session window: if the user verified their TOTP code
-        // recently, allow the action without requiring a one-time token.
-        // ---------------------------------------------------------------
-        if ($this->isSessionWindowActive((int)$user->id)) {
-            return null;
-        }
 
         $request = Craft::$app->getRequest();
         $headerToken = $request->getHeaders()->get('X-Mfa-Enforcer-Token');
@@ -268,22 +308,5 @@ class EventGuard extends Component
 
         self::$verifiedTokenThisRequest = $token;
         return null;
-    }
-
-    /**
-     * Returns true when the user verified their TOTP code within the last
-     * SESSION_WINDOW_SECONDS seconds (default: 10 minutes).
-     * The session key is set by ChallengeController::actionVerify() and by
-     * SetupController::actionEnable() immediately after the first verification.
-     */
-    private function isSessionWindowActive(int $userId): bool
-    {
-        try {
-            $key   = ChallengeController::SESSION_WINDOW_KEY_PREFIX . $userId;
-            $until = Craft::$app->getSession()->get($key);
-            return is_int($until) && $until > time();
-        } catch (\Throwable $e) {
-            return false;
-        }
     }
 }
