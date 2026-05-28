@@ -8,6 +8,7 @@ use craft\base\Element;
 use craft\elements\Category;
 use craft\elements\Entry;
 use craft\elements\GlobalSet;
+use craft\elements\Asset;
 use craft\elements\User as UserElement;
 use craft\events\ModelEvent;
 use sfsinfotech\craftmfaenforcer\controllers\ChallengeController;
@@ -78,6 +79,14 @@ class EventGuard extends Component
                 return;
             }
             $this->challengeScoped($event, 'category', $cat->groupId, 'delete');
+        });
+
+        Event::on(Asset::class, Element::EVENT_BEFORE_DELETE, function (ModelEvent $event) {
+            $asset = $event->sender;
+            if ($this->skipForElement($asset)) {
+                return;
+            }
+            $this->challengeScoped($event, 'asset', $asset->volumeId, 'delete');
         });
 
         // ---- MFA Enforcer plugin settings saves ----
@@ -300,6 +309,85 @@ class EventGuard extends Component
             }
         });
 
+        // ---- Assets: Upload (per volume) ----
+        Event::on(Application::class, Application::EVENT_BEFORE_ACTION, function (ActionEvent $event) {
+            try {
+                $request = Craft::$app->getRequest();
+
+                if ($request->getIsConsoleRequest() || !$request->getIsCpRequest() || !$request->getIsPost()) {
+                    return;
+                }
+
+                $actionId = (string)($event->action->getUniqueId() ?? '');
+                if (stripos($actionId, 'assets/upload') === false) {
+                    return;
+                }
+
+                $folderId = (int)$request->getBodyParam('folderId', 0);
+                if ($folderId <= 0) {
+                    return;
+                }
+
+                $folder = Craft::$app->getAssets()->getFolderById($folderId);
+                if ($folder === null) {
+                    return;
+                }
+
+                $volumeId = (int)$folder->volumeId;
+                $settings = Plugin::getInstance()->getSettings();
+                if (!$settings->isScopedActionProtected('asset', $volumeId, 'upload')) {
+                    return;
+                }
+
+                if (!$this->audienceApplies()) {
+                    return;
+                }
+
+                $reason = $this->verifyOrReasonForUpload();
+                if ($reason === null) {
+                    return;
+                }
+
+                $event->isValid = false;
+                Craft::$app->getResponse()->setStatusCode(401);
+                Craft::$app->getResponse()->data = ['error' => $reason];
+            } catch (\Throwable $e) {
+                // Best-effort only
+            }
+        });
+
+    }
+
+    /**
+     * Like verifyOrReason() but does NOT consume the token.
+     * Used for assets/upload so one MFA confirmation covers all files
+     * in a multi-file upload batch (each file is a separate HTTP request
+     * but all share the same token within its 30-second TTL).
+     */
+    private function verifyOrReasonForUpload(): ?string
+    {
+        $user   = Craft::$app->getUser()->getIdentity();
+        $plugin = Plugin::getInstance();
+
+        if (!$plugin->totp->isEnrolled($user)) {
+            return 'This action requires two-factor authentication, but your account is not enrolled. Please set up MFA via MFA Enforcer → My MFA before retrying.';
+        }
+
+        $request     = Craft::$app->getRequest();
+        $headerToken = $request->getHeaders()->get('X-Mfa-Enforcer-Token');
+        $bodyToken   = $request->getBodyParam('mfaEnforcerToken', '');
+        $queryToken  = $request->getQueryParam('mfaEnforcerToken');
+        $token       = (string)($headerToken ?: $bodyToken ?: $queryToken);
+
+        if ($token === '') {
+            return 'MFA confirmation is required for this action.';
+        }
+
+        if (!$plugin->tokens->verify($token, (int)$user->id)) {
+            return 'MFA confirmation expired or invalid. Please retry and confirm again.';
+        }
+
+        return null;
     }
 
     private function skipForElement(?Element $element): bool

@@ -57,6 +57,30 @@ class TokenService extends Component
         return true;
     }
 
+    /**
+     * Verify a token is valid without consuming it.
+     * Used for multi-file upload batches where one MFA confirmation
+     * should cover all files uploaded within the token's TTL window.
+     */
+    public function verify(string $token, int $userId): bool
+    {
+        $record = MfaEnforcerTokenRecord::findOne([
+            'token'  => $token,
+            'userId' => $userId,
+        ]);
+
+        if ($record === null) {
+            return false;
+        }
+
+        $now = DateTimeHelper::currentUTCDateTime();
+        if (DateTimeHelper::toDateTime($record->expiresAt) < $now) {
+            return false;
+        }
+
+        return true;
+    }
+
     public function purgeExpired(): void
     {
         Craft::$app->getDb()->createCommand()

@@ -52,6 +52,7 @@ class SettingsController extends Controller
             'sections' => Craft::$app->getSections()->getAllSections(),
             'categoryGroups' => Craft::$app->getCategories()->getAllGroups(),
             'globalSets' => Craft::$app->getGlobals()->getAllSets(),
+            'volumes' => Craft::$app->getVolumes()->getAllVolumes(),
         ]);
     }
 

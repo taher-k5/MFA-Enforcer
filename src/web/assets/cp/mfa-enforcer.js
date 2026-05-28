@@ -47,6 +47,28 @@
         return recentMfaToken;
     }
 
+    // Upload batching state.
+    // Reuses the global MFA token cache (5s TTL) so uploads behave like all
+    // other protected actions, while still allowing multi-file uploads to wait
+    // for one modal confirmation.
+    let uploadModalPending = false;
+    let pendingUploadCallbacks = [];
+
+    // Called after MFA succeeds or is cancelled for an upload.
+    // Releases all queued upload XHRs with the same token.
+    function notifyUploadCallbacks(token) {
+        const cbs = pendingUploadCallbacks.slice();
+
+        pendingUploadCallbacks = [];
+        uploadModalPending = false;
+
+        cbs.forEach(function (cb) {
+            try {
+                cb(token);
+            } catch (_) {}
+        });
+    }
+
     // Universal "write-shaped action" detection. Any Craft CP request to
     // /actions/<controller>/<...keyword> where the keyword indicates a mutating
     // operation is a candidate for MFA. Server-side guards decide whether the
@@ -132,7 +154,7 @@
     // ---- Settings-aware protection check ----
     // 'source' is the element-index source key (e.g. 'section:UUID' / 'group:UUID')
     // sent in every element-indexes/perform-action payload.
-    const PARAM_KEYS = ['sectionId', 'groupId', 'setId', 'globalSetId', 'entryId', 'sourceId', 'elementAction', 'elementType', 'draftId', 'canonicalId', 'provisional', 'source'];
+    const PARAM_KEYS = ['sectionId', 'groupId', 'setId', 'globalSetId', 'entryId', 'sourceId', 'elementAction', 'elementType', 'draftId', 'canonicalId', 'provisional', 'source', 'folderId'];
 
     function extractBodyParams(body) {
         const params = {};
@@ -220,7 +242,21 @@
                         if (ctx && ctx.type === 'entry' && ctx.id) return parseInt(ctx.id, 10);
                         return null;
                     case 'asset':
-                        // Asset protection removed — fall through to null
+                        // Priority: explicit volumeId param, then sourceKeyMap ('volume:{uid}'),
+                        // then folderVolumeMap (resolves folderId from assets/upload body),
+                        // then currentResourceContext (set when page URL is /assets/{handle})
+                        if (params.volumeId) return parseInt(params.volumeId, 10);
+                        if (params.source) {
+                            const skm = getConfig().sourceKeyMap || {};
+                            const sm = skm[params.source];
+                            if (sm && sm.type === 'asset' && sm.id) return sm.id;
+                        }
+                        if (params.folderId) {
+                            const fvm = getConfig().folderVolumeMap || {};
+                            const vid = fvm[String(params.folderId)];
+                            if (vid) return vid;
+                        }
+                        if (ctx && ctx.type === 'asset' && ctx.id) return parseInt(ctx.id, 10);
                         return null;
                     case 'category':
                         if (params.groupId) return parseInt(params.groupId, 10);
@@ -343,6 +379,16 @@
             // Scoped: Global sets — save
             if (/\/globals\/(save-global-content|save-set|save-content)\b/.test(u)) {
                 return scopedProtected('globalSet', 'save');
+            }
+
+            // Scoped: Assets — upload (per volume)
+            if (/\/assets\/upload\b/.test(u)) {
+                return scopedProtected('asset', 'upload');
+            }
+
+            // Scoped: Assets — delete (per volume; covers direct delete-asset route)
+            if (/\/assets\/delete-asset\b/.test(u)) {
+                return scopedProtected('asset', 'delete');
             }
 
             return false;
@@ -835,6 +881,75 @@
             return origSend.apply(xhr, arguments);
         }
 
+        // ---- Asset upload: batch-aware handling ----
+        // Each file in a multi-file upload is a separate XHR. To avoid
+        // prompting for MFA once per file, we:
+        //   1. Use a 30-second upload token cache (server does NOT consume
+        //      upload tokens, only validates by TTL).
+        //   2. Queue concurrent XHRs that arrive while the modal is open;
+        //      they all resume with the same token when the user confirms.
+        let decodedUrl;
+        try { decodedUrl = decodeURIComponent(url); } catch (_) { decodedUrl = url; }
+        const isAssetUpload = /\/assets\/upload\b/i.test(decodedUrl);
+
+        if (isAssetUpload) {
+            // 1. Cached upload token (covers sequential uploads within 30s)
+            const uploadToken = getRecentMfaToken();
+            if (uploadToken) {
+                xhr.__mfaEnforcerPassed = true;
+                const headers = xhr.__mfaEnforcerHeaders ? xhr.__mfaEnforcerHeaders.slice() : [];
+                origOpen.call(xhr, method, url, true);
+                for (const [n, v] of headers) origSetHeader.call(xhr, n, v);
+                origSetHeader.call(xhr, TOKEN_HEADER, uploadToken);
+                return origSend.apply(xhr, sendArgs);
+            }
+
+            // 2. Modal already open — queue this XHR to resume when token is ready
+            if (uploadModalPending) {
+                pendingUploadCallbacks.push(function (token) {
+                    if (!token) {
+                        try { Object.defineProperty(xhr, 'status', { value: 0, configurable: true }); } catch (_) {}
+                        if (typeof xhr.onerror === 'function') xhr.onerror(new Event('error'));
+                        xhr.dispatchEvent(new Event('error'));
+                        xhr.dispatchEvent(new Event('loadend'));
+                        return;
+                    }
+                    xhr.__mfaEnforcerPassed = true;
+                    const headers = xhr.__mfaEnforcerHeaders ? xhr.__mfaEnforcerHeaders.slice() : [];
+                    origOpen.call(xhr, method, url, true);
+                    for (const [n, v] of headers) origSetHeader.call(xhr, n, v);
+                    origSetHeader.call(xhr, TOKEN_HEADER, token);
+                    origSend.apply(xhr, sendArgs);
+                });
+                return;
+            }
+
+            // 3. Show MFA modal; all concurrently queued XHRs resume on success
+            uploadModalPending = true;
+            showModal(function (code, done) {
+                verifyCode(code, function (err, token) {
+                    if (err) { done(err); return; }
+                    done(null);
+                    storeRecentMfaToken(token);
+                    notifyUploadCallbacks(token); // resume queued uploads, clears flag
+                    const headers = xhr.__mfaEnforcerHeaders ? xhr.__mfaEnforcerHeaders.slice() : [];
+                    xhr.__mfaEnforcerPassed = true;
+                    origOpen.call(xhr, method, url, true);
+                    for (const [n, v] of headers) origSetHeader.call(xhr, n, v);
+                    origSetHeader.call(xhr, TOKEN_HEADER, token);
+                    origSend.apply(xhr, sendArgs);
+                });
+            }, function () {
+                notifyUploadCallbacks(null); // cancel queued uploads, clears flag
+                try { Object.defineProperty(xhr, 'status', { value: 0, configurable: true }); } catch (_) {}
+                if (typeof xhr.onerror === 'function') xhr.onerror(new Event('error'));
+                xhr.dispatchEvent(new Event('error'));
+                xhr.dispatchEvent(new Event('loadend'));
+            });
+            return;
+        }
+
+        // ---- Non-upload: standard single-use token handling ----
         const cachedToken = getRecentMfaToken();
 
         if (cachedToken) {

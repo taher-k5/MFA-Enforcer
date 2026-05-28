@@ -211,7 +211,13 @@ class Plugin extends BasePlugin
                 }
             }
 
-            // Asset volume URL detection removed — assets are not MFA-protected
+            // /assets/{volume-handle}/...
+            if (preg_match('#^assets/([^/]+)#', $path, $m)) {
+                $volume = Craft::$app->getVolumes()->getVolumeByHandle($m[1]);
+                if ($volume !== null) {
+                    return ['type' => 'asset', 'id' => (int)$volume->id];
+                }
+            }
         } catch (\Throwable $e) {
             // Best-effort detection only — never block CP rendering.
         }
@@ -288,6 +294,38 @@ class Plugin extends BasePlugin
                                 if ($group !== null) {
                                     $sourceKeyMap['group:' . $group->uid] = ['type' => 'category', 'id' => (int)$m[1]];
                                 }
+                            } elseif (preg_match('/^asset\.(\d+)\./', $actionKey, $m)) {
+                                $volume = Craft::$app->getVolumes()->getVolumeById((int)$m[1]);
+                                if ($volume !== null) {
+                                    $sourceKeyMap['volume:' . $volume->uid] = ['type' => 'asset', 'id' => (int)$m[1]];
+                                }
+                            }
+                        }
+                    } catch (\Throwable $e) {
+                        // Best-effort only — never block CP rendering.
+                    }
+                }
+
+                // Build a folderId → volumeId map for all protected-upload volumes.
+                // assets/upload requests carry folderId (not volumeId) in the body, so the
+                // JS interceptor uses this map to resolve which volume an upload targets.
+                $folderVolumeMap = [];
+                if ($applies) {
+                    try {
+                        foreach ($settings->protectedActions as $actionKey => $value) {
+                            if (!$value) {
+                                continue;
+                            }
+                            if (preg_match('/^asset\.(\d+)\.upload$/', $actionKey, $m)) {
+                                $volumeId = (int)$m[1];
+                                $folderIds = (new \craft\db\Query())
+                                    ->select(['id'])
+                                    ->from(['{{%volumefolders}}'])
+                                    ->where(['volumeId' => $volumeId])
+                                    ->column();
+                                foreach ($folderIds as $folderId) {
+                                    $folderVolumeMap[(string)$folderId] = $volumeId;
+                                }
                             }
                         }
                     } catch (\Throwable $e) {
@@ -309,6 +347,7 @@ class Plugin extends BasePlugin
                     'isUnpublishedDraft' => $isUnpublishedDraft,
                     'currentResourceContext' => $currentResourceContext,
                     'sourceKeyMap' => $sourceKeyMap,
+                    'folderVolumeMap' => $folderVolumeMap,
                 ];
                 $view->registerJs('window.MfaEnforcerConfig = ' . json_encode($config) . ';', $view::POS_HEAD);
             }

@@ -11,6 +11,7 @@ class Settings extends Model
         'entry' => ['save', 'delete'],
         'globalSet' => ['save'],
         'category' => ['save', 'delete'],
+        'asset' => ['upload', 'delete'],
     ];
 
     // ---- General settings ----

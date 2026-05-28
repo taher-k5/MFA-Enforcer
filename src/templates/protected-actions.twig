@@ -98,6 +98,31 @@
         <p class="light">{{ "No category groups defined."|t }}</p>
     {% endif %}
 
+    {# ---- Assets (per volume) ---- #}
+    <h2 style="margin-top: 32px;">{{ "Assets"|t }}</h2>
+    {% if volumes|length %}
+        <table class="data fullwidth">
+            <thead>
+                <tr>
+                    <th>{{ "Volume"|t }}</th>
+                    <th class="thin">{{ "Upload"|t }}</th>
+                    <th class="thin">{{ "Delete"|t }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for volume in volumes %}
+                    <tr>
+                        <td><strong>{{ volume.name }}</strong> <span class="light">({{ volume.handle }})</span></td>
+                        <td>{{ checkbox("asset.#{volume.id}.upload", protected) }}</td>
+                        <td>{{ checkbox("asset.#{volume.id}.delete", protected) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="light">{{ "No volumes defined."|t }}</p>
+    {% endif %}
+
     {# ---- Utilities ---- #}
     <h2 style="margin-top: 32px;">{{ "Utilities"|t }}</h2>
     <table class="data fullwidth">
