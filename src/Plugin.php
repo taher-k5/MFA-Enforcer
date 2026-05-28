@@ -287,12 +287,12 @@ class Plugin extends BasePlugin
                             if (preg_match('/^entry\.(\d+)\./', $actionKey, $m)) {
                                 $section = Craft::$app->getSections()->getSectionById((int)$m[1]);
                                 if ($section !== null) {
-                                    $sourceKeyMap['section:' . $section->uid] = ['type' => 'entry', 'id' => (int)$m[1]];
+                                    $sourceKeyMap['section:' . $section->uid] = ['type' => 'entry', 'id' => (int)$m[1], 'name' => $section->name];
                                 }
                             } elseif (preg_match('/^category\.(\d+)\./', $actionKey, $m)) {
                                 $group = Craft::$app->getCategories()->getGroupById((int)$m[1]);
                                 if ($group !== null) {
-                                    $sourceKeyMap['group:' . $group->uid] = ['type' => 'category', 'id' => (int)$m[1]];
+                                    $sourceKeyMap['group:' . $group->uid] = ['type' => 'category', 'id' => (int)$m[1], 'name' => $group->name];
                                 }
                             } elseif (preg_match('/^asset\.(\d+)\./', $actionKey, $m)) {
                                 $volume = Craft::$app->getVolumes()->getVolumeById((int)$m[1]);

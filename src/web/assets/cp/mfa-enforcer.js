@@ -361,6 +361,41 @@
                     if (mapped && mapped.type && mapped.id) {
                         return !!actions[mapped.type + '.' + mapped.id + '.delete'];
                     }
+
+                    // Path 3: Wildcard source ('*') = "All entries" / "All categories" view.
+                    // Read the currently selected rows from the element-index DOM and check
+                    // whether any of their section/group cells match a protected name.
+                    // sourceKeyMap only contains entries for protected resources, so its
+                    // 'name' values are exactly the section names that require MFA.
+                    if (source === '*') {
+                        const et = params.elementType || '';
+                        let resourceType = null;
+                        let cellAttr = null;
+                        if (/Entry/i.test(et)) { resourceType = 'entry'; cellAttr = 'section'; }
+                        else if (/Category/i.test(et)) { resourceType = 'category'; cellAttr = 'group'; }
+                        if (!resourceType) return false;
+
+                        const skm = getConfig().sourceKeyMap || {};
+                        const protectedNames = new Set();
+                        Object.values(skm).forEach(function(v) {
+                            if (v.type === resourceType && v.name) protectedNames.add(v.name);
+                        });
+                        if (protectedNames.size === 0) return false;
+
+                        try {
+                            const selectedRows = document.querySelectorAll('tr.sel');
+                            for (let i = 0; i < selectedRows.length; i++) {
+                                const cell = selectedRows[i].querySelector('td[data-attr="' + cellAttr + '"]');
+                                if (!cell) continue;
+                                const cellText = (cell.textContent || '').trim();
+                                if (protectedNames.has(cellText)) return true;
+                            }
+                            return false;
+                        } catch (_) {
+                            // DOM read failed — prompt MFA if any protection exists (safe fallback)
+                            return true;
+                        }
+                    }
                 }
 
                 return false;
