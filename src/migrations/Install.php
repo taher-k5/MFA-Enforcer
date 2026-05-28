@@ -1,0 +1,80 @@
+<?php
+
+namespace sfsinfotech\craftmfaenforcer\migrations;
+
+use craft\db\Migration;
+
+class Install extends Migration
+{
+    public string $driver;
+
+    public function safeUp(): bool
+    {
+        $this->driver = \Craft::$app->getConfig()->getDb()->driver;
+
+        // Drop the old custom TOTP secrets table if it exists from a previous
+        // Craft 4 install. Craft 5 uses the built-in craft_authenticators table.
+        $this->dropTableIfExists('{{%mfaenforcer_user_secrets}}');
+
+        if (!$this->db->tableExists('{{%mfaenforcer_tokens}}')) {
+            $this->createTable('{{%mfaenforcer_tokens}}', [
+                'id' => $this->primaryKey(),
+                'userId' => $this->integer()->notNull(),
+                'token' => $this->string(64)->notNull(),
+                'actionKey' => $this->string(64)->notNull(),
+                'expiresAt' => $this->dateTime()->notNull(),
+                'usedAt' => $this->dateTime()->null(),
+                'dateCreated' => $this->dateTime()->notNull(),
+                'dateUpdated' => $this->dateTime()->notNull(),
+                'uid' => $this->uid(),
+            ]);
+
+            $this->createIndex(null, '{{%mfaenforcer_tokens}}', ['token'], true);
+            $this->createIndex(null, '{{%mfaenforcer_tokens}}', ['userId', 'actionKey']);
+
+            $this->addForeignKey(
+                null,
+                '{{%mfaenforcer_tokens}}',
+                ['userId'],
+                '{{%users}}',
+                ['id'],
+                'CASCADE',
+                null
+            );
+        }
+
+        if (!$this->db->tableExists('{{%mfaenforcer_settings}}')) {
+            $this->createTable('{{%mfaenforcer_settings}}', [
+                'id'                    => $this->primaryKey(),
+                'enforcedGroupIds'      => $this->text()->notNull(),
+                'exemptUserIds'         => $this->text()->notNull(),
+                'failureLimit'          => $this->integer()->notNull()->defaultValue(5),
+                'failureLockoutMinutes' => $this->integer()->notNull()->defaultValue(5),
+                'protectedActions'      => $this->mediumText()->notNull(),
+                'dateCreated'           => $this->dateTime()->notNull(),
+                'dateUpdated'           => $this->dateTime()->notNull(),
+                'uid'                   => $this->uid(),
+            ]);
+
+            $this->insert('{{%mfaenforcer_settings}}', [
+                'enforcedGroupIds'      => '[]',
+                'exemptUserIds'         => '[]',
+                'failureLimit'          => 5,
+                'failureLockoutMinutes' => 5,
+                'protectedActions'      => '{}',
+                'dateCreated'           => (new \DateTime())->format('Y-m-d H:i:s'),
+                'dateUpdated'           => (new \DateTime())->format('Y-m-d H:i:s'),
+                'uid'                   => \craft\helpers\StringHelper::UUID(),
+            ]);
+        }
+
+        return true;
+    }
+
+    public function safeDown(): bool
+    {
+        $this->dropTableIfExists('{{%mfaenforcer_settings}}');
+        $this->dropTableIfExists('{{%mfaenforcer_tokens}}');
+        return true;
+    }
+}

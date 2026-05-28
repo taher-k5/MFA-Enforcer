@@ -1,0 +1,52 @@
+{% import "_includes/forms" as forms %}
+
+<p>
+    <a class="btn submit" href="{{ cpUrl('settings/mfa-enforcer/protected-actions') }}">
+        {{ "Configure protected actions →"|t }}
+    </a>
+    <span class="light" style="margin-left: 8px;">Choose which sections, volumes, category groups and global sets require MFA on save / create / delete.</span>
+</p>
+
+<hr>
+
+{% set userGroupOptions = [] %}
+{% for group in craft.app.userGroups.allGroups %}
+    {% set userGroupOptions = userGroupOptions|merge([{label: group.name, value: group.id}]) %}
+{% endfor %}
+
+{{ forms.checkboxSelectField({
+    label: 'Enforce for these user groups',
+    instructions: 'Leave empty to require MFA for every control-panel user. Otherwise, only users in one of these groups will be challenged.',
+    name: 'enforcedGroupIds',
+    options: userGroupOptions,
+    values: settings.enforcedGroupIds,
+    showAllOption: false,
+}) }}
+
+{{ forms.elementSelectField({
+    label: 'Exempt users (breakglass)',
+    instructions: 'Users in this list bypass MFA challenges entirely. Use sparingly — intended for service accounts or recovery access.',
+    name: 'exemptUserIds',
+    elementType: 'craft\\elements\\User',
+    elements: settings.exemptUserIds is not empty ? craft.users.id(settings.exemptUserIds).all() : [],
+    limit: null,
+}) }}
+
+
+{{ forms.textField({
+    label: 'Failure attempt limit',
+    instructions: 'After this many wrong codes within the lockout window, the user is temporarily locked out of MFA-protected actions.',
+    name: 'failureLimit',
+    value: settings.failureLimit,
+    type: 'number',
+    min: 1,
+}) }}
+
+{{ forms.textField({
+    label: 'Failure lockout window (minutes)',
+    instructions: 'Lockout duration once the failure limit is reached.',
+    name: 'failureLockoutMinutes',
+    value: settings.failureLockoutMinutes,
+    type: 'number',
+    min: 1,
+}) }}

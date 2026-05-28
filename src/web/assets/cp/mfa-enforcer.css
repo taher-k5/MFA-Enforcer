@@ -1,0 +1,22 @@
+.mfa-enforcer-modal .inputcontainer {
+    margin-top: 8px;
+}
+.mfa-enforcer-modal .flex {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.mfa-enforcer-modal .flex-grow {
+    flex: 1 1 auto;
+}
+.mfa-enforcer-modal .mfa-enforcer-btn-cell {
+    flex: 0 0 auto;
+}
+.mfa-enforcer-modal input.text {
+    letter-spacing: 4px;
+    text-align: center;
+    font-size: 16px;
+}
+.mfa-enforcer-modal p.error:empty {
+    display: none;
+}
