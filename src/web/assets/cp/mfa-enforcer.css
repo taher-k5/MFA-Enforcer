@@ -20,3 +20,32 @@
 .mfa-enforcer-modal p.error:empty {
     display: none;
 }
+
+/* Ensure the MFA modal appears above Craft's upload progress overlays */
+.modal.mfa-enforcer-modal,
+.modal.mfa-enforcer-enrol-modal,
+.mfa-enforcer-modal,
+.mfa-enforcer-enrol-modal {
+    z-index: 99999 !important;
+}
+
+/* Keep the modal container fixed and responsive so upload stripes don't clip it */
+.modal.mfa-enforcer-modal .body,
+.modal.mfa-enforcer-enrol-modal .body,
+.mfa-enforcer-modal .body,
+.mfa-enforcer-enrol-modal .body {
+    box-sizing: border-box;
+    max-width: calc(100% - 48px);
+}
+
+/* Make inputs render above overlays */
+.mfa-enforcer-modal input.text {
+    position: relative;
+    z-index: 100000;
+}
+
+/* Slight visual tweak so the modal never gets hidden by page transforms */
+.modal.mfa-enforcer-modal,
+.modal.mfa-enforcer-enrol-modal {
+    position: fixed !important;
+}

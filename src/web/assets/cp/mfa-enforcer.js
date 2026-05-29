@@ -440,26 +440,93 @@
 
             // Craft 5: delete-elements/delete (new deletion endpoint introduced in Craft 5.10+)
             // The request body only contains {elementType, elementIds, siteId, ...} — no
-            // sectionId/groupId/volumeId. Resource ID is resolved from currentResourceContext
-            // first (reliable when user is on a section/group/volume URL), then falls back to
-            // checking whether ANY resource of that type has delete protection. The PHP-side
-            // EVENT_BEFORE_ACTION handler verifies the specific resource is actually protected,
-            // so a false-positive trigger here is safe (delete will succeed if unprotected).
+            // sectionId/groupId/volumeId.
             if (/\/delete-elements\/delete\b/.test(u)) {
                 const et = (params.elementType || '').replace(/\\/g, '\\');
+
+                // Read the 'source' param from the current page URL.
+                // Craft appends it to all index URLs:
+                //   /entries/testing  → ?source=section%3A<testing-uuid>  (specific section)
+                //   /entries          → ?source=*                          (All entries view)
+                //   (absent)          → no source available
+                let pageSource = '';
+                try {
+                    pageSource = new URLSearchParams(window.location.search).get('source') || '';
+                } catch (_) {}
+
+                // Wildcard DOM scan — used when pageSource === '*' (All entries / All categories
+                // / All assets view). Inspects the Section/Group/Volume column of selected rows
+                // and returns true if ANY selected row belongs to a protected resource.
+                // This matches the requirement: mixed selection (protected + unprotected) → ask MFA;
+                // all-unprotected selection → no MFA.
+                function wildcardDomCheck(resourceType, cellAttr) {
+                    const skm = getConfig().sourceKeyMap || {};
+                    const protectedNames = new Set();
+                    Object.values(skm).forEach(function(v) {
+                        if (v.type === resourceType && v.name) protectedNames.add(v.name);
+                    });
+                    if (protectedNames.size === 0) return false;
+                    try {
+                        const selectedRows = document.querySelectorAll('tr.sel');
+                        for (let i = 0; i < selectedRows.length; i++) {
+                            const cell = selectedRows[i].querySelector('td[data-attr="' + cellAttr + '"]');
+                            if (!cell) continue;
+                            if (protectedNames.has((cell.textContent || '').trim())) return true;
+                        }
+                        return false;
+                    } catch (_) {
+                        // DOM read failed — fall back to broad check; PHP does real per-element gate
+                        return hasAnyDeleteProtection(resourceType);
+                    }
+                }
+
                 if (/Entry/i.test(et)) {
+                    // Path 1: exact section ID from currentResourceContext or explicit sectionId in body
                     const id = resolveResourceId('entry');
                     if (id) return !!actions['entry.' + id + '.delete'];
+
+                    // Path 2a: "All entries" wildcard view — scan selected rows' Section column
+                    if (pageSource === '*') return wildcardDomCheck('entry', 'section');
+
+                    // Path 2b: specific section UUID in page URL → precise sourceKeyMap lookup
+                    if (pageSource) {
+                        const skm = getConfig().sourceKeyMap || {};
+                        const mapped = skm[pageSource];
+                        if (mapped && mapped.type === 'entry' && mapped.id) {
+                            return !!actions['entry.' + mapped.id + '.delete'];
+                        }
+                        // UUID present but NOT in sourceKeyMap → section is not protected
+                        return false;
+                    }
+                    // Path 3: no source param at all — speculative, PHP does real per-element check
                     return hasAnyDeleteProtection('entry');
                 }
                 if (/Category/i.test(et)) {
                     const id = resolveResourceId('category');
                     if (id) return !!actions['category.' + id + '.delete'];
+                    if (pageSource === '*') return wildcardDomCheck('category', 'group');
+                    if (pageSource) {
+                        const skm = getConfig().sourceKeyMap || {};
+                        const mapped = skm[pageSource];
+                        if (mapped && mapped.type === 'category' && mapped.id) {
+                            return !!actions['category.' + mapped.id + '.delete'];
+                        }
+                        return false;
+                    }
                     return hasAnyDeleteProtection('category');
                 }
                 if (/Asset/i.test(et)) {
                     const id = resolveResourceId('asset');
                     if (id) return !!actions['asset.' + id + '.delete'];
+                    if (pageSource === '*') return wildcardDomCheck('asset', 'volume');
+                    if (pageSource) {
+                        const skm = getConfig().sourceKeyMap || {};
+                        const mapped = skm[pageSource];
+                        if (mapped && mapped.type === 'asset' && mapped.id) {
+                            return !!actions['asset.' + mapped.id + '.delete'];
+                        }
+                        return false;
+                    }
                     return hasAnyDeleteProtection('asset');
                 }
                 if (/\bUser\b/i.test(et)) return false;
