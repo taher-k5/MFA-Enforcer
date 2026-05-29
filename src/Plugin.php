@@ -188,6 +188,31 @@ class Plugin extends BasePlugin
             $normalizedPath = preg_replace('#^content/#', '', $path);
 
             // /entries/{section-handle}/...  (Craft 5: /content/entries/{handle}/...)
+            // Craft 5 groups all Single-type sections under 'entries/singles/'
+            // (e.g. content/entries/singles/2-home) instead of using the section handle.
+            // Detect this path and resolve the section from the canonical entry ID.
+            if (preg_match('#^entries/singles/(\d+)#', $normalizedPath, $sm)) {
+                $entryId = (int)$sm[1];
+                $entry = Craft::$app->getEntries()->getEntryById($entryId);
+                if ($entry !== null && $entry->sectionId !== null) {
+                    return ['type' => 'entry', 'id' => (int)$entry->sectionId];
+                }
+                // Entry not found by canonical id — try via drafts/revisions table
+                try {
+                    $sectionId = (new Query())
+                        ->select(['sectionId'])
+                        ->from(['{{%entries}}'])
+                        ->where(['id' => $entryId])
+                        ->scalar();
+                    if ($sectionId) {
+                        return ['type' => 'entry', 'id' => (int)$sectionId];
+                    }
+                } catch (\Throwable $e) {
+                    // best-effort only
+                }
+                return null;
+            }
+
             if (preg_match('#^entries/([^/]+)#', $normalizedPath, $m)) {
                 $section = Craft::$app->getEntries()->getSectionByHandle($m[1]);
                 if ($section !== null) {

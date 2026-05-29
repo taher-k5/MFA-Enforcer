@@ -23,7 +23,7 @@
     }
 
     const TOKEN_HEADER = 'X-Mfa-Enforcer-Token';
-    const MFA_TOKEN_TTL_MS = 5000;
+    const MFA_TOKEN_TTL_MS = 3000;
 
     let recentMfaToken = null;
     let recentMfaExpires = 0;
@@ -48,7 +48,7 @@
     }
 
     // Upload batching state.
-    // Reuses the global MFA token cache (5s TTL) so uploads behave like all
+    // Reuses the global MFA token cache (3s TTL) so uploads behave like all
     // other protected actions, while still allowing multi-file uploads to wait
     // for one modal confirmation.
     let uploadModalPending = false;
